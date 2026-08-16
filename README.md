@@ -110,11 +110,14 @@ The OpenAI integration follows the official [Images and vision](https://develope
 
 ```bash
 docker build -t alcohol-label-verification-fed .
+docker build --target test -t alcohol-label-verification-fed:test .
 docker run --rm -p 3000:3000 \
   -e OCR_PROVIDER=openai \
   -e OPENAI_API_KEY="$OPENAI_API_KEY" \
   alcohol-label-verification-fed
 ```
+
+The optional `test` target runs the same Vitest suite in a clean Node 24 Linux build stage. The default final image does not contain test files or development dependencies.
 
 For an offline smoke test, use `-e OCR_PROVIDER=fake` and omit the key. Open [http://localhost:3000](http://localhost:3000).
 

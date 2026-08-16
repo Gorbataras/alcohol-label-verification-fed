@@ -120,6 +120,11 @@ export class VerificationService {
     } catch (error) {
       const providerError = error instanceof ProviderUnavailableError
         ? error
+        : controller.signal.aborted || (error instanceof Error && error.name === "AbortError")
+          ? new ProviderUnavailableError(
+              "EXTRACTION_TIMEOUT",
+              "Label extraction timed out.",
+            )
         : new ProviderUnavailableError(
             "EXTRACTION_UNAVAILABLE",
             "The label reader is temporarily unavailable.",

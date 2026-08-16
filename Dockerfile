@@ -7,6 +7,11 @@ COPY src ./src
 COPY web ./web
 RUN npm run build
 
+FROM build AS test
+COPY test ./test
+COPY fixtures ./fixtures
+RUN npm test
+
 FROM node:24-bookworm-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app

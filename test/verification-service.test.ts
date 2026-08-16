@@ -45,6 +45,24 @@ describe("VerificationService", () => {
     expect(result).toMatchObject({ outcome: "UNABLE_TO_VERIFY", error: { code: "UPSTREAM", retryable: true } });
   });
 
+  it("enforces the provider deadline without retrying", async () => {
+    let calls = 0;
+    const repository: LabelExtractionRepository = {
+      extract: (_image, signal): Promise<never> => {
+        calls += 1;
+        return new Promise<never>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new DOMException("late provider", "AbortError")));
+        });
+      },
+    };
+    const result = await new VerificationService(repository, 5).verify(matchingApplication, image());
+    expect(result).toMatchObject({
+      outcome: "UNABLE_TO_VERIFY",
+      error: { code: "EXTRACTION_TIMEOUT", retryable: true },
+    });
+    expect(calls).toBe(1);
+  });
+
   it("isolates invalid and unavailable batch items while preserving order", async () => {
     const service = new VerificationService(new FakeLabelExtractionRepository());
     const response = await service.verifyBatch(

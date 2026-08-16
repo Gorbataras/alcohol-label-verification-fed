@@ -42,6 +42,16 @@ describe("OpenAiLabelExtractionRepository", () => {
     });
   });
 
+  it("treats a refusal as an invalid structured response", async () => {
+    const repository = new OpenAiLabelExtractionRepository({
+      client: { responses: { parse: vi.fn().mockResolvedValue({ output_parsed: null }) } },
+    });
+    await expect(repository.extract(image, new AbortController().signal)).rejects.toMatchObject({
+      code: "INVALID_PROVIDER_RESPONSE",
+      message: "The label reader returned an invalid result.",
+    });
+  });
+
   it("honors an already-aborted request", async () => {
     const controller = new AbortController();
     controller.abort();
@@ -50,4 +60,5 @@ describe("OpenAiLabelExtractionRepository", () => {
     });
     await expect(repository.extract(image, controller.signal)).rejects.toMatchObject({ code: "EXTRACTION_TIMEOUT" });
   });
+
 });

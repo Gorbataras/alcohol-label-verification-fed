@@ -24,9 +24,10 @@ export function buildApp(
   if (process.env.NODE_ENV !== "test") {
     app.use((req: Request, res: Response, next) => {
       const startedAt = performance.now();
+      const requestPath = req.path;
       res.on("finish", () => {
         const durationMs = Math.round((performance.now() - startedAt) * 100) / 100;
-        console.log(`${req.method} ${req.path} ${res.statusCode} ${durationMs}ms`);
+        console.log(`${req.method} ${requestPath} ${res.statusCode} ${durationMs}ms`);
       });
       next();
     });

@@ -3,6 +3,7 @@ import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import { FakeLabelExtractionRepository } from "../src/repositories/FakeLabelExtractionRepository.js";
+import type { LabelExtractionRepository } from "../src/repositories/LabelExtractionRepository.js";
 import { matchingApplication } from "./helpers.js";
 
 const fixture = path.resolve("fixtures/compliant.png");
@@ -99,6 +100,15 @@ describe("verification API", () => {
       .expect(({ body }) => expect(body.error.code).toBe("IMAGE_TOO_LARGE"));
   });
 
+  it("rejects an empty image", async () => {
+    await request(app)
+      .post("/api/v1/verifications")
+      .field("application", application())
+      .attach("image", Buffer.alloc(0), { filename: "empty.png", contentType: "image/png" })
+      .expect(400)
+      .expect(({ body }) => expect(body.error.code).toBe("EMPTY_IMAGE"));
+  });
+
   it("preserves batch order and isolates invalid/provider-failed items", async () => {
     const applications = [
       matchingApplication,
@@ -135,6 +145,30 @@ describe("verification API", () => {
       .attach("images", fixture)
       .expect(422)
       .expect(({ body }) => expect(body.error.code).toBe("BATCH_PAIR_COUNT_MISMATCH"));
+
+    await request(app)
+      .post("/api/v1/verifications/batch")
+      .field("applications", JSON.stringify(Array.from({ length: 6 }, () => matchingApplication)))
+      .attach("images", fixture)
+      .expect(422)
+      .expect(({ body }) => expect(body.error.code).toBe("BATCH_SIZE_EXCEEDED"));
+  });
+
+  it("does not expose unexpected provider details", async () => {
+    const repository: LabelExtractionRepository = {
+      extract: async () => { throw new Error("api-key-and-upstream-detail"); },
+    };
+    const sanitized = buildApp(repository, { rateLimit: false });
+    const response = await request(sanitized)
+      .post("/api/v1/verifications")
+      .field("application", application())
+      .attach("image", fixture)
+      .expect(503);
+    expect(JSON.stringify(response.body)).not.toContain("api-key-and-upstream-detail");
+    expect(response.body.error).toMatchObject({
+      code: "EXTRACTION_UNAVAILABLE",
+      message: "The label reader is temporarily unavailable.",
+    });
   });
 
   it("returns the standard error shape when rate limited", async () => {
