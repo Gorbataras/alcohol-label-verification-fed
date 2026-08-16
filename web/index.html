@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Decision-support prototype for distilled-spirits label review." />
+    <title>Label Review Assistant</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <header class="site-header">
+      <div class="shell">
+        <p class="eyebrow">Distilled-spirits prototype</p>
+        <h1>Label Review Assistant</h1>
+        <p class="lede">Compare a label image with application values in seconds.</p>
+      </div>
+    </header>
+
+    <main id="main-content" class="shell" tabindex="-1">
+      <aside class="decision-note" aria-label="Important decision-support notice">
+        <strong>An agent makes the final compliance decision.</strong>
+        This tool highlights matches and concerns; it does not approve or reject a label.
+      </aside>
+
+      <div id="error-summary" class="error-summary" role="alert" tabindex="-1" hidden></div>
+
+      <nav class="mode-switcher" aria-label="Choose review mode">
+        <button id="single-mode" class="mode-button is-active" type="button" aria-pressed="true">
+          Check one label
+        </button>
+        <button id="batch-mode" class="mode-button" type="button" aria-pressed="false">
+          Check a batch
+        </button>
+      </nav>
+
+      <section id="single-panel" aria-labelledby="single-heading">
+        <div class="section-heading">
+          <p class="step">Single review</p>
+          <h2 id="single-heading">Enter the application values</h2>
+          <p>All fields are required except country of origin.</p>
+        </div>
+
+        <form id="single-form" novalidate>
+          <div class="form-grid">
+            <label>
+              Application reference
+              <input name="referenceId" autocomplete="off" maxlength="128" required placeholder="COLA-1001" />
+            </label>
+            <label>
+              Brand name
+              <input name="brandName" autocomplete="off" maxlength="1000" required placeholder="OLD TOM DISTILLERY" />
+            </label>
+            <label class="span-two">
+              Class or type
+              <input name="classType" autocomplete="off" maxlength="1000" required placeholder="Kentucky Straight Bourbon Whiskey" />
+            </label>
+            <label>
+              Alcohol content
+              <input name="alcoholContent" autocomplete="off" maxlength="1000" required placeholder="45% Alc./Vol. (90 Proof)" />
+            </label>
+            <label>
+              Net contents
+              <input name="netContents" autocomplete="off" maxlength="1000" required placeholder="750 mL" />
+            </label>
+            <label class="span-two">
+              Producer name and address
+              <textarea name="producerNameAddress" maxlength="1000" required placeholder="Old Tom Distillery, Frankfort, Kentucky"></textarea>
+            </label>
+            <label>
+              Country of origin <span class="optional">Optional</span>
+              <input name="countryOfOrigin" autocomplete="off" maxlength="200" placeholder="United States" />
+            </label>
+            <label class="file-label span-two">
+              Label image
+              <span>JPEG, PNG, or WebP; one complete image up to 15 MiB.</span>
+              <input name="image" type="file" accept="image/jpeg,image/png,image/webp" required />
+            </label>
+          </div>
+          <button id="single-submit" class="primary-action" type="submit">Check this label</button>
+        </form>
+
+        <div id="single-status" class="status-message" role="status" aria-live="polite"></div>
+        <section id="single-results" class="results" aria-label="Single label result" tabindex="-1" hidden></section>
+      </section>
+
+      <section id="batch-panel" aria-labelledby="batch-heading" hidden>
+        <div class="section-heading">
+          <p class="step">Batch review</p>
+          <h2 id="batch-heading">Match a CSV to label images</h2>
+          <p>Process up to 300 labels. The browser sends groups of five and keeps results only in this tab.</p>
+        </div>
+
+        <div class="batch-steps">
+          <section class="batch-step">
+            <span class="step-number" aria-hidden="true">1</span>
+            <div>
+              <h3>Prepare the application list</h3>
+              <p>Use the exact image filename in each CSV row.</p>
+              <button id="download-template" class="secondary-action" type="button">Download CSV template</button>
+            </div>
+          </section>
+          <section class="batch-step">
+            <span class="step-number" aria-hidden="true">2</span>
+            <div class="batch-inputs">
+              <h3>Choose the CSV and images</h3>
+              <label>
+                Application CSV
+                <input id="batch-csv" type="file" accept=".csv,text/csv" />
+              </label>
+              <label>
+                Label images
+                <input id="batch-images" type="file" accept="image/jpeg,image/png,image/webp" multiple />
+              </label>
+            </div>
+          </section>
+          <section class="batch-step">
+            <span class="step-number" aria-hidden="true">3</span>
+            <div>
+              <h3>Review and start</h3>
+              <div id="batch-preflight" class="preflight" role="status" aria-live="polite">Choose both files to check the batch.</div>
+              <div class="action-row">
+                <button id="batch-start" class="primary-action" type="button" disabled>Start batch review</button>
+                <button id="batch-cancel" class="danger-action" type="button" hidden>Cancel</button>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div id="batch-progress-wrap" class="progress-wrap" hidden>
+          <label for="batch-progress">Batch progress</label>
+          <progress id="batch-progress" value="0" max="1"></progress>
+          <p id="batch-status" role="status" aria-live="polite"></p>
+        </div>
+        <section id="batch-results" class="results" aria-label="Batch results" tabindex="-1" hidden></section>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="shell">
+        <p>Prototype scope: distilled spirits, application matching, and government warning checks.</p>
+        <p><a href="/docs">API documentation</a></p>
+      </div>
+    </footer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
