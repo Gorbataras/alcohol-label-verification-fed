@@ -218,7 +218,10 @@ const COUNTRY_CODES: Record<string, string> = {
 };
 
 export function canonicalizeCountry(value: string): string {
-  const normalized = normalizeText(value);
+  const normalized = normalizeText(value).replace(
+    /^(?:product of|made in|country of origin(?: is)?)\s+/,
+    "",
+  );
   return COUNTRY_CODES[normalized] ?? normalized.toLocaleUpperCase("en-US");
 }
 

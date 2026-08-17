@@ -15,10 +15,26 @@ export type ApplicationInput = z.infer<typeof ApplicationInputSchema>;
 
 export const WarningFormatSchema = z.object({
   headingIsUppercase: z.boolean().nullable(),
-  headingIsBold: z.boolean().nullable(),
-  bodyIsNotBold: z.boolean().nullable(),
-  separateFromOtherText: z.boolean().nullable(),
-  continuousParagraph: z.boolean().nullable(),
+  headingIsBold: z
+    .boolean()
+    .nullable()
+    .describe("True when the warning heading has a visibly heavier font weight than the body."),
+  bodyIsNotBold: z
+    .boolean()
+    .nullable()
+    .describe("True when the warning body uses a visibly regular, non-bold font weight."),
+  separateFromOtherText: z
+    .boolean()
+    .nullable()
+    .describe(
+      "True when whitespace, a border, or placement sets the complete warning apart; a distinct enclosing box counts.",
+    ),
+  continuousParagraph: z
+    .boolean()
+    .nullable()
+    .describe(
+      "True when the warning is one continuous paragraph; normal visual line wrapping does not make it false.",
+    ),
 });
 
 export const ExtractedLabelSchema = z.object({
@@ -27,9 +43,24 @@ export const ExtractedLabelSchema = z.object({
   classType: z.string().nullable(),
   alcoholContent: z.string().nullable(),
   netContents: z.string().nullable(),
-  producerNameAddress: z.string().nullable(),
-  countryOfOrigin: z.string().nullable(),
-  governmentWarningText: z.string().nullable(),
+  producerNameAddress: z
+    .string()
+    .nullable()
+    .describe(
+      "Producer entity name and address only; exclude role labels and separate country-of-origin wording.",
+    ),
+  countryOfOrigin: z
+    .string()
+    .nullable()
+    .describe(
+      "Country name or code only when explicitly visible; exclude introductions such as Product of or Made in.",
+    ),
+  governmentWarningText: z
+    .string()
+    .nullable()
+    .describe(
+      "Exact visible warning including the GOVERNMENT WARNING: heading and both numbered statements.",
+    ),
   warningFormat: WarningFormatSchema,
 });
 export type ExtractedLabel = z.infer<typeof ExtractedLabelSchema>;

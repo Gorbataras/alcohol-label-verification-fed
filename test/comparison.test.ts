@@ -31,6 +31,8 @@ describe("comparison normalization", () => {
     expect(parseVolumeMl("25.36 fl. oz.")).toBeCloseTo(750, 0);
     expect(canonicalizeCountry("U.S.A.")).toBe("US");
     expect(canonicalizeCountry("United States of America")).toBe("US");
+    expect(canonicalizeCountry("Product of United States")).toBe("US");
+    expect(canonicalizeCountry("Made in France")).toBe("FR");
   });
 });
 

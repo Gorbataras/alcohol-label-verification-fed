@@ -8,13 +8,19 @@ describe("OpenAiLabelExtractionRepository", () => {
   it("uses structured Responses API image input and validates parsed output", async () => {
     const parse = vi.fn().mockResolvedValue({ output_parsed: extractedLabel() });
     const repository = new OpenAiLabelExtractionRepository({
-      model: "gpt-5.6-luna",
+      model: "gpt-5.4-nano",
       client: { responses: { parse } },
     });
     const result = await repository.extract(image, new AbortController().signal);
     expect(result.brandName).toBe("Old Tom Distillery");
     const params = parse.mock.calls[0]?.[0] as any;
-    expect(params).toMatchObject({ model: "gpt-5.6-luna", store: false, reasoning: { effort: "none" } });
+    expect(params).toMatchObject({ model: "gpt-5.4-nano", store: false, reasoning: { effort: "none" } });
+    expect(params.input[0].content).toContain("For producerNameAddress, return only");
+    expect(params.input[0].content).toContain("For countryOfOrigin, return only");
+    expect(params.input[0].content).toContain("must include the visible \"GOVERNMENT WARNING:\"");
+    expect(params.input[0].content).toContain("Normal visual line wrapping");
+    expect(params.input[0].content).toContain("a distinct enclosing box counts as separation");
+    expect(params.input[0].content).toContain("visible relative font weight");
     expect(params.input[1].content[1]).toMatchObject({ type: "input_image", detail: "original" });
     expect(params.input[1].content[1].image_url).toContain("data:image/jpeg;base64,");
   });

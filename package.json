@@ -7,9 +7,9 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "concurrently -k -n api,web -c blue,green \"tsx watch src/server.ts\" \"vite\"",
-    "start": "tsx src/server.ts",
-    "start:prod": "node dist/server/server.js",
+    "dev": "concurrently -k -n api,web -c blue,green \"tsx --env-file-if-exists=.env watch src/server.ts\" \"vite\"",
+    "start": "tsx --env-file-if-exists=.env src/server.ts",
+    "start:prod": "node --env-file-if-exists=.env dist/server/server.js",
     "build": "npm run typecheck && npm run build:server && vite build",
     "build:server": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",

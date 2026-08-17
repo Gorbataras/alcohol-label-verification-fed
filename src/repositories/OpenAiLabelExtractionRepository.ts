@@ -23,11 +23,26 @@ interface ResponsesClient {
 const EXTRACTION_PROMPT = `Read this distilled-spirits label as a conservative compliance assistant.
 Return only information that is visibly present. Use null for any text or formatting fact that is
 uncertain, cropped, illegible, obscured, or inferred. Never repair, paraphrase, or invent warning
-text. Preserve the exact capitalization, punctuation, and wording of the government warning.
+text.
+
+For producerNameAddress, return only the producer entity name and its address. Omit role labels
+such as "Distilled by", "Bottled by", or "Produced by", and omit separate country-of-origin text.
+For countryOfOrigin, return only the country name or country code. Omit introductory wording such
+as "Product of", "Made in", or "Country of origin".
+
+governmentWarningText must include the visible "GOVERNMENT WARNING:" heading followed by both
+numbered statements. Preserve its exact capitalization, punctuation, and wording. Return null if
+any part of the heading or either numbered statement is unreadable.
+
 For warning formatting, inspect the visible label and report whether the heading is uppercase and
 bold, the body is not bold, the statement is separate from other information, and it is presented
-as one continuous paragraph. imageUsable is false only when the image cannot support meaningful
-label review at all.`;
+as one continuous paragraph. Normal visual line wrapping within a single paragraph still counts as
+continuous; report false only for distinct blocks, columns, bullets, or interruptions by unrelated
+text. Separation is satisfied when whitespace, a border, or placement clearly sets the complete
+warning apart from unrelated text; a distinct enclosing box counts as separation. Judge boldness
+by visible relative font weight: a clearly heavier heading is bold and a
+regular-weight body is not bold. Use null only when image quality makes the weight indistinguishable.
+imageUsable is false only when the image cannot support meaningful label review at all.`;
 
 export interface OpenAiRepositoryOptions {
   apiKey?: string;
@@ -42,7 +57,7 @@ export class OpenAiLabelExtractionRepository implements LabelExtractionRepositor
 
   constructor(options: OpenAiRepositoryOptions = {}) {
     this.apiKey = options.apiKey;
-    this.model = options.model ?? "gpt-5.6-luna";
+    this.model = options.model ?? "gpt-5.4-nano";
     this.client = options.client;
   }
 

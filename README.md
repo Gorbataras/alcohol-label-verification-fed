@@ -44,11 +44,12 @@ Environment variables:
 | `PORT` | `3000` | Express port |
 | `OCR_PROVIDER` | `openai` | `openai` or deterministic `fake` |
 | `OPENAI_API_KEY` | unset | Server-only OpenAI credential |
-| `OPENAI_MODEL` | `gpt-5.6-luna` | Configurable image-capable model |
+| `OPENAI_MODEL` | `gpt-5.4-nano` | Configurable image-capable model; the default supports high-volume vision data extraction and structured outputs. |
 | `OPENAI_TIMEOUT_MS` | `4200` | Per-label provider deadline |
 | `RATE_LIMIT_PER_MINUTE` | `60` | Per-process request limit |
 
 The server boots without a key so `/health` and the UI remain available. A real verification request returns a sanitized `503` outcome until `OPENAI_API_KEY` is configured. Never commit `.env`.
+The `dev`, `start`, and `start:prod` commands load `.env` with Node's built-in env-file support when the file exists; exported environment variables and Docker `-e` values remain supported.
 
 ## Commands
 
