@@ -19,6 +19,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     openAiApiKey: env.OPENAI_API_KEY || undefined,
     openAiModel: env.OPENAI_MODEL?.trim() || "gpt-5.4-nano",
     openAiTimeoutMs: positiveInteger(env.OPENAI_TIMEOUT_MS, 4_200),
-    rateLimitPerMinute: positiveInteger(env.RATE_LIMIT_PER_MINUTE, 60),
+    rateLimitPerMinute: positiveInteger(env.RATE_LIMIT_PER_MINUTE, 10),
   };
 }

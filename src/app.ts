@@ -37,7 +37,7 @@ export function buildApp(
     ? null
     : rateLimit({
         windowMs: options.rateLimit?.windowMs ?? 60_000,
-        limit: options.rateLimit?.limit ?? 60,
+        limit: options.rateLimit?.limit ?? 10,
         standardHeaders: "draft-8",
         legacyHeaders: false,
         handler: (_req, res) => {
