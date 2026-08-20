@@ -4,7 +4,6 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import axe from "axe-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MOCK_SUBMISSIONS } from "../web/src/mock-submissions.js";
 import { initializeApp, renderOutcome } from "../web/src/main.js";
 
 const html = readFileSync(path.resolve("web/index.html"), "utf8");
@@ -15,7 +14,15 @@ beforeEach(() => {
   document.write(html);
   document.close();
   delete document.documentElement.dataset.labelReviewInitialized;
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  if (typeof URL.createObjectURL !== "function") {
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      writable: true,
+      value: () => "blob:test",
+    });
+  }
   initializeApp(document);
 });
 
@@ -33,16 +40,85 @@ function matched(referenceId: string, index: number) {
   };
 }
 
+function loadSamples(): void {
+  document.querySelector<HTMLButtonElement>("#load-demo")!.click();
+}
+
+function requestUrl(input: string | URL | Request): string {
+  if (typeof input === "string") return input;
+  if (input instanceof URL) return input.href;
+  return input.url;
+}
+
+function stubReviewFetch() {
+  const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = requestUrl(input);
+    if (!url.includes("/api/")) {
+      return new Response(new Blob(["image"], { type: "image/png" }), { status: 200 });
+    }
+    const body = init?.body;
+    let items = [matched("unknown", 0)];
+    if (body instanceof FormData) {
+      const raw = body.get("application") ?? body.get("applications");
+      if (typeof raw === "string") {
+        const parsed = JSON.parse(raw) as { referenceId: string } | Array<{ referenceId: string }>;
+        const applications = Array.isArray(parsed) ? parsed : [parsed];
+        items = applications.map((application, index) => matched(application.referenceId, index));
+      }
+    }
+    const single = url.endsWith("/verifications") && items[0];
+    if (single && !url.includes("/batch")) {
+      return new Response(JSON.stringify(single.result), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({
+      summary: { matched: items.length, needsReview: 0, unableToVerify: 0, total: items.length },
+      items,
+      processingMs: 10,
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+function setFile(input: HTMLInputElement, file: File): void {
+  Object.defineProperty(input, "files", {
+    configurable: true,
+    value: {
+      0: file,
+      length: 1,
+      item: (index: number) => (index === 0 ? file : null),
+      [Symbol.iterator]: function* () { yield file; },
+    },
+  });
+}
+
 describe("browser interface", () => {
-  it("shows a five-item submitted-application queue without import or editing controls", () => {
+  it("starts with an empty queue and disabled processing actions", () => {
+    expect(document.querySelectorAll("#application-queue .queue-button")).toHaveLength(0);
+    expect(document.querySelector("#load-demo")?.textContent).toContain("Load demo samples");
+    expect(document.querySelector("#run-demo")).toBeNull();
+    expect(document.querySelector("#queue-empty")?.textContent).toContain("The review queue is empty");
+    expect(document.querySelector("#application-detail")?.textContent).toContain("No application selected");
+    expect(document.querySelector<HTMLButtonElement>("#process-selected")?.disabled).toBe(true);
+    expect(document.querySelector<HTMLButtonElement>("#process-batch")?.disabled).toBe(true);
+  });
+
+  it("loads bundled samples into the queue without calling the verification API", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    loadSamples();
+    loadSamples();
     expect(document.querySelectorAll("#application-queue .queue-button")).toHaveLength(5);
-    expect(document.querySelector("#run-demo")?.textContent).toContain("Run demo");
-    expect(document.querySelector("input, textarea, form")).toBeNull();
     expect(document.body.textContent).toContain("COLA-DEMO-1001");
-    expect(document.body.textContent).toContain("Submitted application values");
+    expect(document.querySelector("#application-detail")?.textContent).toContain("Submitted application values");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("opens the selected submitted application and its label image", () => {
+    loadSamples();
     document.querySelectorAll<HTMLButtonElement>("#application-queue .queue-button")[1]!.click();
     const detail = document.querySelector<HTMLElement>("#application-detail")!;
     expect(detail.textContent).toContain("COLA-DEMO-1002");
@@ -77,37 +153,72 @@ describe("browser interface", () => {
     expect(target.textContent).toContain("Low confidence");
   });
 
-  it("loads the bundled submissions, sends one demo batch, and renders rerun state", async () => {
-    const fetchMock = vi.fn(async (input: string | Request) => {
-      if (typeof input === "string" && !input.startsWith("/api/")) {
-        return new Response(new Blob(["image"], { type: "image/png" }), { status: 200 });
-      }
-      return new Response(JSON.stringify({
-        summary: { matched: 5, needsReview: 0, unableToVerify: 0, total: 5 },
-        items: MOCK_SUBMISSIONS.map((submission, index) => matched(submission.application.referenceId, index)),
-        processingMs: 10,
-      }), { status: 200, headers: { "content-type": "application/json" } });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    document.querySelector<HTMLButtonElement>("#run-demo")!.click();
+  it("processes the selected application with a single verification request", async () => {
+    loadSamples();
+    const fetchMock = stubReviewFetch();
+    document.querySelector<HTMLButtonElement>("#process-selected")!.click();
     await vi.waitFor(() => {
-      expect(document.querySelector("#demo-status")?.textContent).toContain("Finished reviewing 5");
+      expect(document.querySelector("#demo-status")?.textContent).toContain("Finished reviewing COLA-DEMO-1001");
     });
-
-    expect(fetchMock).toHaveBeenCalledTimes(6);
-    expect(document.querySelector<HTMLButtonElement>("#run-demo")?.textContent).toBe("Run demo again");
+    const apiCalls = fetchMock.mock.calls.filter(([input]) => requestUrl(input).includes("/api/"));
+    expect(apiCalls).toHaveLength(1);
+    expect(requestUrl(apiCalls[0]![0])).toContain("/api/v1/verifications");
+    expect(requestUrl(apiCalls[0]![0])).not.toContain("/batch");
     expect(document.querySelector("#application-queue")?.textContent).toContain("Match");
   });
 
+  it("processes the next three unprocessed applications as a batch", async () => {
+    loadSamples();
+    const fetchMock = stubReviewFetch();
+    document.querySelector<HTMLButtonElement>("#process-batch")!.click();
+    document.querySelector<HTMLButtonElement>("[data-batch-count='3']")!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("#demo-status")?.textContent).toContain("Finished reviewing 3");
+    });
+    const batchCall = fetchMock.mock.calls.find(([input, init]) => (
+      requestUrl(input).includes("/api/v1/verifications/batch") && init?.body instanceof FormData
+    ));
+    expect(batchCall).toBeDefined();
+    const applications = JSON.parse(String((batchCall![1]!.body as FormData).get("applications"))) as Array<{ referenceId: string }>;
+    expect(applications.map((item) => item.referenceId)).toEqual([
+      "COLA-DEMO-1001",
+      "COLA-DEMO-1002",
+      "COLA-DEMO-1003",
+    ]);
+    expect(document.querySelector("#application-queue")?.textContent).toContain("Match");
+    expect(document.querySelector("#application-queue")?.textContent).toContain("Ready for review");
+  });
+
+  it("adds a manually entered application to the queue", () => {
+    document.querySelector<HTMLButtonElement>("#add-application")!.click();
+    document.querySelector<HTMLInputElement>("#application-reference-id")!.value = "COLA-MANUAL-1";
+    document.querySelector<HTMLInputElement>("#application-brand-name")!.value = "Harbor Gin";
+    document.querySelector<HTMLInputElement>("#application-class-type")!.value = "Gin";
+    document.querySelector<HTMLInputElement>("#application-alcohol-content")!.value = "40% Alc./Vol.";
+    document.querySelector<HTMLInputElement>("#application-net-contents")!.value = "750 mL";
+    document.querySelector<HTMLInputElement>("#application-producer")!.value = "Harbor Distilling, Portland, Oregon";
+    setFile(
+      document.querySelector<HTMLInputElement>("#application-image")!,
+      new File(["image"], "harbor-gin.png", { type: "image/png" }),
+    );
+    document.querySelector<HTMLFormElement>("#add-application-form")!.dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true }),
+    );
+    expect(document.querySelector("#add-application-error")?.textContent).toBe("");
+    expect(document.querySelectorAll("#application-queue .queue-button")).toHaveLength(1);
+    expect(document.querySelector("#application-queue")?.textContent).toContain("COLA-MANUAL-1");
+    expect(document.querySelector("#application-detail")?.textContent).toContain("Harbor Gin");
+  });
+
   it("reports a bundled-image failure without leaving the reviewer in a running state", async () => {
+    loadSamples();
     vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 404 })));
-    document.querySelector<HTMLButtonElement>("#run-demo")!.click();
+    document.querySelector<HTMLButtonElement>("#process-selected")!.click();
     await vi.waitFor(() => {
       expect(document.querySelector<HTMLElement>("#error-summary")?.hidden).toBe(false);
     });
     expect(document.querySelector("#demo-status")?.textContent).toContain("did not finish");
-    expect(document.querySelector<HTMLButtonElement>("#run-demo")?.disabled).toBe(false);
+    expect(document.querySelector<HTMLButtonElement>("#process-selected")?.disabled).toBe(false);
   });
 
   it("renders external text as text rather than executable markup", () => {

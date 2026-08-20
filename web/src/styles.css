@@ -28,7 +28,7 @@ body {
 button { font: inherit; min-height: 52px; }
 a { color: #075c9e; }
 
-a:focus-visible, button:focus-visible, [tabindex="-1"]:focus-visible {
+a:focus-visible, button:focus-visible, input:focus-visible, [tabindex="-1"]:focus-visible {
   outline: 4px solid var(--focus);
   outline-offset: 3px;
 }
@@ -112,10 +112,14 @@ main { padding-block: 1.5rem 4rem; }
 .demo-intro .step { color: var(--warning); }
 .demo-intro h2 { margin: 0.2rem 0 0.4rem; }
 .demo-intro p:last-child { margin-bottom: 0; color: var(--muted); }
-.demo-actions { min-width: min(100%, 290px); }
-.confidence-note { margin: 0.6rem 0 0; color: var(--muted); font-size: 0.85rem; font-weight: 650; }
+.demo-actions {
+  display: grid;
+  gap: 0.65rem;
+  min-width: min(100%, 290px);
+}
+.confidence-note { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.85rem; font-weight: 650; }
 
-.primary-action, .queue-button {
+.primary-action, .secondary-action, .queue-button, .dialog-presets button {
   padding: 0.75rem 1rem;
   border: 2px solid var(--navy);
   border-radius: 0.45rem;
@@ -125,7 +129,33 @@ main { padding-block: 1.5rem 4rem; }
 
 .primary-action { width: 100%; color: white; background: var(--navy); }
 .primary-action:hover { background: var(--navy-dark); }
+.secondary-action { width: 100%; color: var(--navy); background: white; }
+.secondary-action:hover { background: #eef7ff; }
 button:disabled { cursor: not-allowed; opacity: 0.55; }
+
+.empty-copy { margin: 0 0 0.75rem; color: var(--muted); font-weight: 650; }
+
+dialog {
+  width: min(100% - 2rem, 36rem);
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+dialog::backdrop { background: rgb(13 45 70 / 45%); }
+dialog h2 { margin-top: 0; }
+.field { display: grid; gap: 0.3rem; margin-bottom: 0.85rem; }
+.field label { font-weight: 750; }
+.field input {
+  width: 100%;
+  min-height: 52px;
+  padding: 0.55rem 0.7rem;
+  border: 2px solid var(--border);
+  border-radius: 0.4rem;
+  font: inherit;
+}
+.dialog-presets, .dialog-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.65rem; margin: 1rem 0; }
+.dialog-actions { grid-template-columns: 1fr 1fr; }
+.dialog-error { margin: 0 0 0.75rem; color: var(--danger); font-weight: 750; }
 
 .progress-wrap { margin-bottom: 1.5rem; padding: 1rem; }
 progress { width: 100%; height: 1.4rem; }

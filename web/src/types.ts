@@ -77,3 +77,7 @@ export interface SubmittedApplication {
   imageUrl: string;
   title: string;
 }
+
+export interface QueueItem extends SubmittedApplication {
+  image?: File;
+}

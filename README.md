@@ -16,7 +16,7 @@ routes → controllers → services → LabelExtractionRepository
 
 Services contain image preprocessing and deterministic comparison logic and never import Express request/response types. The concrete extraction repository is selected only in `src/server.ts`. There is no database, Redis, authentication, or server-side document retention.
 
-The same-origin Vanilla TypeScript/Vite interface is a reviewer workspace. It includes five bundled mock submissions that represent an upstream submission handoff; reviewers select a submitted application and run the complete demo without entering values or uploading files. The browser sends the five bundled images and their submitted values in one batch request, and keeps results only in the current tab.
+The same-origin Vanilla TypeScript/Vite interface is a reviewer workspace. The queue starts empty. Reviewers can load five bundled mock submissions, add an application by hand, then process the selected item or the next unprocessed batch. Results stay only in the current tab.
 
 See [docs/dependencies.md](docs/dependencies.md) for the purpose, usage location, and tradeoffs of every direct runtime and development dependency.
 
@@ -67,7 +67,7 @@ API documentation is available at [http://localhost:3000/docs](http://localhost:
 
 ## Reviewer demo
 
-Open the browser UI and select **Run demo**. The queue contains five representative submitted applications:
+Open the browser UI. The review queue starts empty. Select **Load demo samples** to add five representative submitted applications, or **Add application** to enter values and attach a label image:
 
 - Clear, compliant label
 - Submitted brand mismatch
@@ -75,7 +75,7 @@ Open the browser UI and select **Run demo**. The queue contains five representat
 - Glare that lowers extraction confidence
 - Rotated image that remains readable
 
-Each review keeps the applicant's submitted values visible next to the label image. Extraction confidence is a visual-readability estimate, not a compliance score. A confidence below 85% makes that check `UNCERTAIN` and requires manual review, even when the extracted text appears to match or differ.
+Use **Process selected** to review the open application, or **Process batch** to review the next 3, 5, 10, or a custom number of unprocessed items. Each review keeps the applicant's submitted values visible next to the label image. Extraction confidence is a visual-readability estimate, not a compliance score. A confidence below 85% makes that check `UNCERTAIN` and requires manual review, even when the extracted text appears to match or differ.
 
 ## API examples
 

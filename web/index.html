@@ -28,17 +28,20 @@
       <section class="demo-intro" aria-labelledby="review-queue-heading">
         <div>
           <p class="step">Review queue</p>
-          <h2 id="review-queue-heading">Five submitted applications are ready for review</h2>
-          <p>These mock records stand in for applications already submitted through an upstream system. No files or application values need to be entered here.</p>
+          <h2 id="review-queue-heading">Build a queue, then review applications</h2>
+          <p>The queue starts empty. Load the bundled samples, add an application yourself, then process the selected item or the next unprocessed batch.</p>
         </div>
         <div class="demo-actions">
-          <button id="run-demo" class="primary-action" type="button">Run demo</button>
+          <button id="load-demo" class="primary-action" type="button">Load demo samples</button>
+          <button id="add-application" class="secondary-action" type="button">Add application</button>
+          <button id="process-selected" class="secondary-action" type="button">Process selected</button>
+          <button id="process-batch" class="secondary-action" type="button">Process batch</button>
           <p class="confidence-note">Extraction confidence estimates visual clarity, not compliance.</p>
         </div>
       </section>
 
       <div id="demo-progress-wrap" class="progress-wrap" hidden>
-        <label for="demo-progress">Demo review progress</label>
+        <label for="demo-progress">Review progress</label>
         <progress id="demo-progress" max="5"></progress>
         <p id="demo-status" role="status" aria-live="polite"></p>
       </div>
@@ -46,11 +49,77 @@
       <div class="review-workspace">
         <aside class="queue-panel" aria-label="Submitted application queue">
           <h2>Submitted applications</h2>
+          <p id="queue-empty" class="empty-copy">The review queue is empty. Load demo samples or add an application.</p>
           <ol id="application-queue" class="application-queue"></ol>
         </aside>
         <article id="application-detail" class="application-detail" tabindex="-1" aria-live="polite"></article>
       </div>
     </main>
+
+    <dialog id="batch-dialog" aria-labelledby="batch-dialog-heading">
+      <form id="batch-form">
+        <h2 id="batch-dialog-heading">Process a batch</h2>
+        <p>Review the next unprocessed applications in queue order.</p>
+        <div class="dialog-presets">
+          <button type="button" data-batch-count="3">3</button>
+          <button type="button" data-batch-count="5">5</button>
+          <button type="button" data-batch-count="10">10</button>
+        </div>
+        <div class="field">
+          <label for="batch-custom-count">Or enter another number</label>
+          <input id="batch-custom-count" name="customCount" type="number" min="1" step="1" inputmode="numeric" />
+        </div>
+        <p id="batch-dialog-error" class="dialog-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button type="submit" class="primary-action">Process</button>
+          <button id="batch-cancel" class="secondary-action" type="button">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="add-application-dialog" aria-labelledby="add-application-heading">
+      <form id="add-application-form">
+        <h2 id="add-application-heading">Add application</h2>
+        <p>Enter the submitted application values and attach the label image. The item is added to the queue and is not reviewed until you process it.</p>
+        <div class="field">
+          <label for="application-reference-id">Reference ID</label>
+          <input id="application-reference-id" name="referenceId" type="text" maxlength="128" required autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="application-brand-name">Brand name</label>
+          <input id="application-brand-name" name="brandName" type="text" maxlength="1000" required />
+        </div>
+        <div class="field">
+          <label for="application-class-type">Class or type</label>
+          <input id="application-class-type" name="classType" type="text" maxlength="1000" required />
+        </div>
+        <div class="field">
+          <label for="application-alcohol-content">Alcohol content</label>
+          <input id="application-alcohol-content" name="alcoholContent" type="text" maxlength="1000" required />
+        </div>
+        <div class="field">
+          <label for="application-net-contents">Net contents</label>
+          <input id="application-net-contents" name="netContents" type="text" maxlength="1000" required />
+        </div>
+        <div class="field">
+          <label for="application-producer">Producer name and address</label>
+          <input id="application-producer" name="producerNameAddress" type="text" maxlength="1000" required />
+        </div>
+        <div class="field">
+          <label for="application-country">Country of origin (optional)</label>
+          <input id="application-country" name="countryOfOrigin" type="text" maxlength="200" />
+        </div>
+        <div class="field">
+          <label for="application-image">Label image</label>
+          <input id="application-image" name="image" type="file" accept="image/*" required />
+        </div>
+        <p id="add-application-error" class="dialog-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button type="submit" class="primary-action">Add to queue</button>
+          <button id="add-application-cancel" class="secondary-action" type="button">Cancel</button>
+        </div>
+      </form>
+    </dialog>
 
     <footer class="site-footer">
       <div class="shell">

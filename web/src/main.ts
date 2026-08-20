@@ -1,7 +1,9 @@
-import { verifyChunk } from "./api.js";
+import { verifyChunk, verifySingle } from "./api.js";
+import { processBrowserBatch } from "./batch.js";
 import { MOCK_SUBMISSIONS } from "./mock-submissions.js";
 import type {
   FieldCheck,
+  QueueItem,
   SubmittedApplication,
   VerificationOutcome,
   WarningCheck,
@@ -173,16 +175,44 @@ function queueState(outcome: VerificationOutcome | undefined, running: boolean):
   return outcome ? outcomeLabel(outcome.outcome) : "Ready for review";
 }
 
-async function loadDemoEntries(signal: AbortSignal) {
-  return Promise.all(MOCK_SUBMISSIONS.map(async (submission) => {
-    const response = await fetch(submission.imageUrl, { signal });
-    if (!response.ok) throw new Error(`Could not load ${submission.imageFilename} for the demo.`);
-    const image = await response.blob();
-    return {
-      application: submission.application,
-      image: new File([image], submission.imageFilename, { type: image.type || "image/png" }),
-    };
-  }));
+function copySubmission(submission: SubmittedApplication): QueueItem {
+  return {
+    title: submission.title,
+    imageFilename: submission.imageFilename,
+    imageUrl: submission.imageUrl,
+    application: { ...submission.application },
+  };
+}
+
+function openDialog(dialog: HTMLDialogElement): void {
+  if (dialog.open) return;
+  if (typeof dialog.showModal === "function") dialog.showModal();
+  else dialog.setAttribute("open", "");
+}
+
+function closeDialog(dialog: HTMLDialogElement): void {
+  if (typeof dialog.close === "function" && dialog.open) dialog.close();
+  else dialog.removeAttribute("open");
+}
+
+function setDialogError(target: HTMLElement, message: string | null): void {
+  if (!message) {
+    target.hidden = true;
+    target.textContent = "";
+    return;
+  }
+  target.hidden = false;
+  target.textContent = message;
+}
+
+async function imageFor(item: QueueItem, signal: AbortSignal): Promise<File> {
+  if (item.image) return item.image;
+  const response = await fetch(item.imageUrl, { signal });
+  if (!response.ok) throw new Error(`Could not load ${item.imageFilename} for review.`);
+  const blob = await response.blob();
+  const image = new File([blob], item.imageFilename, { type: blob.type || "image/png" });
+  item.image = image;
+  return image;
 }
 
 export function initializeApp(root: Document = document): void {
@@ -190,16 +220,31 @@ export function initializeApp(root: Document = document): void {
   root.documentElement.dataset.labelReviewInitialized = "true";
 
   const errorSummary = required<HTMLElement>(root, "#error-summary");
-  const runDemo = required<HTMLButtonElement>(root, "#run-demo");
+  const loadDemo = required<HTMLButtonElement>(root, "#load-demo");
+  const addApplication = required<HTMLButtonElement>(root, "#add-application");
+  const processSelected = required<HTMLButtonElement>(root, "#process-selected");
+  const processBatchButton = required<HTMLButtonElement>(root, "#process-batch");
   const status = required<HTMLElement>(root, "#demo-status");
   const progressWrap = required<HTMLElement>(root, "#demo-progress-wrap");
   const progress = required<HTMLProgressElement>(root, "#demo-progress");
-  const queue = required<HTMLElement>(root, "#application-queue");
+  const queueList = required<HTMLElement>(root, "#application-queue");
+  const queueEmpty = required<HTMLElement>(root, "#queue-empty");
   const detail = required<HTMLElement>(root, "#application-detail");
+  const batchDialog = required<HTMLDialogElement>(root, "#batch-dialog");
+  const batchForm = required<HTMLFormElement>(root, "#batch-form");
+  const batchCustomCount = required<HTMLInputElement>(root, "#batch-custom-count");
+  const batchDialogError = required<HTMLElement>(root, "#batch-dialog-error");
+  const batchCancel = required<HTMLButtonElement>(root, "#batch-cancel");
+  const addDialog = required<HTMLDialogElement>(root, "#add-application-dialog");
+  const addForm = required<HTMLFormElement>(root, "#add-application-form");
+  const addImage = required<HTMLInputElement>(root, "#application-image");
+  const addDialogError = required<HTMLElement>(root, "#add-application-error");
+  const addCancel = required<HTMLButtonElement>(root, "#add-application-cancel");
 
-  let selectedReference = MOCK_SUBMISSIONS[0]!.application.referenceId;
-  let outcomes = new Map<string, VerificationOutcome>();
-  let running = false;
+  const queue: QueueItem[] = [];
+  let selectedReference: string | null = null;
+  const outcomes = new Map<string, VerificationOutcome>();
+  const processingIds = new Set<string>();
 
   function clearErrors(): void {
     errorSummary.hidden = true;
@@ -207,48 +252,89 @@ export function initializeApp(root: Document = document): void {
   }
 
   function showError(message: string): void {
-    errorSummary.replaceChildren(create("strong", undefined, "The demo could not run."), create("p", undefined, message));
+    errorSummary.replaceChildren(
+      create("strong", undefined, "The applications could not be reviewed."),
+      create("p", undefined, message),
+    );
     errorSummary.hidden = false;
     errorSummary.focus();
   }
 
+  function unprocessedItems(): QueueItem[] {
+    return queue.filter((item) => (
+      !outcomes.has(item.application.referenceId) && !processingIds.has(item.application.referenceId)
+    ));
+  }
+
+  function updateActions(): void {
+    const selected = selectedReference
+      ? queue.find((item) => item.application.referenceId === selectedReference)
+      : undefined;
+    const busy = processingIds.size > 0;
+    processSelected.disabled = !selected || busy;
+    processBatchButton.disabled = busy || unprocessedItems().length === 0;
+  }
+
   function renderQueue(): void {
-    queue.replaceChildren();
-    MOCK_SUBMISSIONS.forEach((submission) => {
-      const outcome = outcomes.get(submission.application.referenceId);
+    queueEmpty.hidden = queue.length > 0;
+    queueList.replaceChildren();
+    queue.forEach((submission) => {
+      const referenceId = submission.application.referenceId;
+      const outcome = outcomes.get(referenceId);
       const item = create("li", "queue-item");
       const button = create("button", "queue-button");
       button.type = "button";
-      button.setAttribute("aria-current", String(submission.application.referenceId === selectedReference));
+      button.setAttribute("aria-current", String(referenceId === selectedReference));
       const image = create("img", "queue-thumbnail") as HTMLImageElement;
       image.src = submission.imageUrl;
       image.alt = "";
       const text = create("span", "queue-copy");
       text.append(
-        create("strong", undefined, submission.application.referenceId),
+        create("strong", undefined, referenceId),
         create("span", undefined, submission.title),
       );
-      const state = create("span", `queue-state ${outcome ? statusClass(outcome.outcome) : ""}`, queueState(outcome, running));
+      const state = create(
+        "span",
+        `queue-state ${outcome && !processingIds.has(referenceId) ? statusClass(outcome.outcome) : ""}`,
+        queueState(outcome, processingIds.has(referenceId)),
+      );
       button.append(image, text, state);
       button.addEventListener("click", () => {
-        selectedReference = submission.application.referenceId;
+        selectedReference = referenceId;
         renderQueue();
         renderDetail();
+        updateActions();
       });
       item.append(button);
-      queue.append(item);
+      queueList.append(item);
     });
   }
 
   function renderDetail(): void {
     detail.replaceChildren();
-    const submission = MOCK_SUBMISSIONS.find((item) => item.application.referenceId === selectedReference) ?? MOCK_SUBMISSIONS[0]!;
+    const submission = queue.find((item) => item.application.referenceId === selectedReference);
+    if (!submission) {
+      detail.append(
+        create("p", "step", "Submitted application"),
+        create("h2", undefined, "No application selected"),
+        create("p", undefined, "Load demo samples or add an application to start a review."),
+      );
+      return;
+    }
+
     const outcome = outcomes.get(submission.application.referenceId);
+    const running = processingIds.has(submission.application.referenceId);
     const header = create("div", "detail-header");
     const headingGroup = create("div");
-    headingGroup.append(create("p", "step", "Submitted application"), create("h2", undefined, submission.application.referenceId), create("p", "detail-title", submission.title));
+    headingGroup.append(
+      create("p", "step", "Submitted application"),
+      create("h2", undefined, submission.application.referenceId),
+      create("p", "detail-title", submission.title),
+    );
     header.append(headingGroup);
-    if (outcome) header.append(create("span", `outcome-badge ${statusClass(outcome.outcome)}`, outcomeLabel(outcome.outcome)));
+    if (outcome && !running) {
+      header.append(create("span", `outcome-badge ${statusClass(outcome.outcome)}`, outcomeLabel(outcome.outcome)));
+    }
     detail.append(header);
 
     const submitted = create("section", "submitted-panel");
@@ -265,11 +351,17 @@ export function initializeApp(root: Document = document): void {
 
     const result = create("section", "verification-result");
     if (running) {
-      result.append(create("h3", undefined, "Automated review in progress"), create("p", undefined, "The submitted label is being read and compared with the submitted application values."));
+      result.append(
+        create("h3", undefined, "Automated review in progress"),
+        create("p", undefined, "The submitted label is being read and compared with the submitted application values."),
+      );
     } else if (outcome) {
       renderOutcome(outcome, result, { headingLevel: 3, showHeader: false });
     } else {
-      result.append(create("h3", undefined, "Ready for automated review"), create("p", undefined, "Run the demo to extract label information and compare it with this submitted application."));
+      result.append(
+        create("h3", undefined, "Ready for automated review"),
+        create("p", undefined, "Process this application or a batch of unprocessed items to extract label information and compare it with the submitted values."),
+      );
     }
     detail.append(result);
   }
@@ -277,47 +369,177 @@ export function initializeApp(root: Document = document): void {
   function render(): void {
     renderQueue();
     renderDetail();
+    updateActions();
   }
 
-  runDemo.addEventListener("click", async () => {
-    if (running) return;
-    clearErrors();
-    running = true;
-    outcomes = new Map();
-    runDemo.disabled = true;
+  function startProgress(total: number, message: string): void {
     progressWrap.hidden = false;
-    progress.removeAttribute("value");
-    progress.max = MOCK_SUBMISSIONS.length;
-    status.textContent = `Preparing ${MOCK_SUBMISSIONS.length} submitted applications for review.`;
-    render();
+    progress.hidden = false;
+    progress.max = Math.max(total, 1);
+    if (total === 0) progress.removeAttribute("value");
+    else progress.value = 0;
+    status.textContent = message;
+  }
 
+  loadDemo.addEventListener("click", () => {
+    const existing = new Set(queue.map((item) => item.application.referenceId));
+    const added = MOCK_SUBMISSIONS.filter((item) => !existing.has(item.application.referenceId)).map(copySubmission);
+    queue.push(...added);
+    if (!selectedReference && queue.length) selectedReference = queue[0]!.application.referenceId;
+    render();
+  });
+
+  addApplication.addEventListener("click", () => {
+    setDialogError(addDialogError, null);
+    openDialog(addDialog);
+  });
+
+  addCancel.addEventListener("click", () => closeDialog(addDialog));
+
+  addForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const data = new FormData(addForm);
+    const referenceId = String(data.get("referenceId") ?? "").trim();
+    const brandName = String(data.get("brandName") ?? "").trim();
+    const classType = String(data.get("classType") ?? "").trim();
+    const alcoholContent = String(data.get("alcoholContent") ?? "").trim();
+    const netContents = String(data.get("netContents") ?? "").trim();
+    const producerNameAddress = String(data.get("producerNameAddress") ?? "").trim();
+    const countryOfOrigin = String(data.get("countryOfOrigin") ?? "").trim();
+    const imageFile = addImage.files?.[0];
+
+    if (!referenceId || !brandName || !classType || !alcoholContent || !netContents || !producerNameAddress) {
+      setDialogError(addDialogError, "Enter every required application value.");
+      return;
+    }
+    if (queue.some((item) => item.application.referenceId === referenceId)) {
+      setDialogError(addDialogError, "An application with this reference ID is already in the queue.");
+      return;
+    }
+    if (!(imageFile instanceof File) || !imageFile.size) {
+      setDialogError(addDialogError, "Attach a label image.");
+      return;
+    }
+
+    const item: QueueItem = {
+      title: brandName,
+      imageFilename: imageFile.name,
+      imageUrl: URL.createObjectURL(imageFile),
+      image: imageFile,
+      application: {
+        referenceId,
+        brandName,
+        classType,
+        alcoholContent,
+        netContents,
+        producerNameAddress,
+        ...(countryOfOrigin ? { countryOfOrigin } : {}),
+      },
+    };
+    queue.push(item);
+    selectedReference = referenceId;
+    addForm.reset();
+    setDialogError(addDialogError, null);
+    closeDialog(addDialog);
+    render();
+  });
+
+  processSelected.addEventListener("click", async () => {
+    const submission = queue.find((item) => item.application.referenceId === selectedReference);
+    if (!submission || processingIds.size > 0) return;
+    const referenceId = submission.application.referenceId;
+    clearErrors();
+    processingIds.add(referenceId);
+    startProgress(1, `Analyzing ${referenceId}. This usually takes less than five seconds per label.`);
+    render();
     try {
-      const controller = new AbortController();
-      const entries = await loadDemoEntries(controller.signal);
-      status.textContent = `Analyzing ${entries.length} submitted label images. This usually takes less than five seconds per label.`;
-      const response = await verifyChunk(entries, controller.signal);
-      outcomes = new Map(response.items.map((item) => [item.result.referenceId, item.result]));
-      selectedReference = MOCK_SUBMISSIONS.find((submission) => outcomes.get(submission.application.referenceId)?.outcome === "NEEDS_REVIEW")?.application.referenceId
-        ?? selectedReference;
-      progress.value = MOCK_SUBMISSIONS.length;
-      status.textContent = `Finished reviewing ${MOCK_SUBMISSIONS.length} submitted applications.`;
+      const image = await imageFor(submission, new AbortController().signal);
+      const outcome = await verifySingle(submission.application, image);
+      outcomes.set(referenceId, outcome);
+      progress.value = 1;
+      status.textContent = `Finished reviewing ${referenceId}.`;
     } catch (error) {
-      const message = error instanceof Error ? error.message : "The submitted applications could not be reviewed.";
-      status.textContent = "The demo did not finish.";
+      const message = error instanceof Error ? error.message : "The submitted application could not be reviewed.";
+      status.textContent = "The review did not finish.";
       showError(message);
     } finally {
-      running = false;
-      runDemo.disabled = false;
-      runDemo.textContent = outcomes.size ? "Run demo again" : "Run demo";
+      processingIds.delete(referenceId);
       render();
     }
+  });
+
+  async function runBatch(count: number): Promise<void> {
+    const items = unprocessedItems().slice(0, count);
+    if (!items.length) {
+      progressWrap.hidden = false;
+      status.textContent = "There are no unprocessed applications in the queue.";
+      return;
+    }
+    clearErrors();
+    items.forEach((item) => processingIds.add(item.application.referenceId));
+    startProgress(items.length, `Preparing ${items.length} submitted applications for review.`);
+    render();
+    try {
+      const controller = new AbortController();
+      const entries = await Promise.all(items.map(async (item) => ({
+        application: item.application,
+        image: await imageFor(item, controller.signal),
+      })));
+      status.textContent = `Analyzing ${entries.length} submitted label images. This usually takes less than five seconds per label.`;
+      const results = await processBrowserBatch(entries, verifyChunk, {
+        signal: controller.signal,
+        onProgress: ({ completed, total }) => {
+          progress.value = completed;
+          status.textContent = `Analyzing ${completed} of ${total} submitted label images.`;
+        },
+      });
+      results.forEach((outcome) => {
+        if (outcome) outcomes.set(outcome.referenceId, outcome);
+      });
+      progress.value = items.length;
+      status.textContent = `Finished reviewing ${items.length} submitted applications.`;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The submitted applications could not be reviewed.";
+      status.textContent = "The review did not finish.";
+      showError(message);
+    } finally {
+      items.forEach((item) => processingIds.delete(item.application.referenceId));
+      render();
+    }
+  }
+
+  processBatchButton.addEventListener("click", () => {
+    setDialogError(batchDialogError, null);
+    batchCustomCount.value = "";
+    openDialog(batchDialog);
+  });
+
+  batchCancel.addEventListener("click", () => closeDialog(batchDialog));
+
+  batchForm.querySelectorAll<HTMLButtonElement>("[data-batch-count]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const count = Number(button.dataset.batchCount);
+      closeDialog(batchDialog);
+      void runBatch(count);
+    });
+  });
+
+  batchForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const count = Number(batchCustomCount.value);
+    if (!Number.isInteger(count) || count < 1) {
+      setDialogError(batchDialogError, "Enter a whole number of 1 or more.");
+      return;
+    }
+    closeDialog(batchDialog);
+    void runBatch(count);
   });
 
   render();
 }
 
 const boot = () => {
-  if (document.querySelector("#run-demo")) initializeApp();
+  if (document.querySelector("#load-demo")) initializeApp();
 };
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once: true });
