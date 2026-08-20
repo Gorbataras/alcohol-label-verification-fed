@@ -23,6 +23,7 @@ export interface FieldCheck {
   expected: string | null;
   observed: string | null;
   score: number | null;
+  confidence: number;
   detail: string;
 }
 
@@ -31,6 +32,7 @@ export interface WarningCheck {
   status: "MATCH" | "MISMATCH" | "NOT_FOUND" | "UNCERTAIN";
   expected: string | boolean;
   observed: string | boolean | null;
+  confidence: number;
   detail: string;
 }
 
@@ -67,4 +69,11 @@ export interface BatchVerificationResponse {
 export interface BatchEntry {
   application: ApplicationInput;
   image: File;
+}
+
+export interface SubmittedApplication {
+  application: ApplicationInput;
+  imageFilename: string;
+  imageUrl: string;
+  title: string;
 }

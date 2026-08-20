@@ -5,11 +5,11 @@ RUN npm ci
 COPY tsconfig.json tsconfig.build.json vitest.config.ts vite.config.ts ./
 COPY src ./src
 COPY web ./web
+COPY fixtures ./fixtures
 RUN npm run build
 
 FROM build AS test
 COPY test ./test
-COPY fixtures ./fixtures
 RUN npm test
 
 FROM node:24-bookworm-slim AS runtime

@@ -17,7 +17,11 @@ export class FakeLabelExtractionRepository implements LabelExtractionRepository 
         "The label reader is temporarily unavailable.",
       );
     }
-    const mismatch = image.filename.toLocaleLowerCase("en-US").includes("mismatch");
+    const filename = image.filename.toLocaleLowerCase("en-US");
+    const mismatch = filename.includes("mismatch");
+    const warningCase = filename.includes("warning-case");
+    const lowConfidence = filename.includes("glare") || filename.includes("low-contrast") || filename.includes("blur");
+    const baseConfidence = lowConfidence ? 0.72 : 0.98;
     return {
       imageUsable: true,
       brandName: mismatch ? "SOME OTHER DISTILLERY" : "OLD TOM DISTILLERY",
@@ -26,13 +30,31 @@ export class FakeLabelExtractionRepository implements LabelExtractionRepository 
       netContents: "750 mL",
       producerNameAddress: "Old Tom Distillery, Frankfort, Kentucky",
       countryOfOrigin: "United States",
-      governmentWarningText: CANONICAL_GOVERNMENT_WARNING,
+      governmentWarningText: warningCase
+        ? CANONICAL_GOVERNMENT_WARNING.replace("GOVERNMENT WARNING:", "Government Warning:")
+        : CANONICAL_GOVERNMENT_WARNING,
       warningFormat: {
-        headingIsUppercase: true,
+        headingIsUppercase: !warningCase,
         headingIsBold: true,
         bodyIsNotBold: true,
         separateFromOtherText: true,
         continuousParagraph: true,
+      },
+      confidence: {
+        brandName: baseConfidence,
+        classType: baseConfidence,
+        alcoholContent: baseConfidence,
+        netContents: baseConfidence,
+        producerNameAddress: baseConfidence,
+        countryOfOrigin: baseConfidence,
+        governmentWarningText: baseConfidence,
+        warningFormat: {
+          headingIsUppercase: baseConfidence,
+          headingIsBold: baseConfidence,
+          bodyIsNotBold: baseConfidence,
+          separateFromOtherText: baseConfidence,
+          continuousParagraph: baseConfidence,
+        },
       },
     };
   }

@@ -16,11 +16,14 @@ describe("OpenAiLabelExtractionRepository", () => {
     const params = parse.mock.calls[0]?.[0] as any;
     expect(params).toMatchObject({ model: "gpt-5.4-nano", store: false, reasoning: { effort: "none" } });
     expect(params.input[0].content).toContain("For producerNameAddress, return only");
+    expect(params.input[0].content).toContain("continue across adjacent lines");
+    expect(params.input[0].content).toContain("omit only the country clause");
     expect(params.input[0].content).toContain("For countryOfOrigin, return only");
     expect(params.input[0].content).toContain("must include the visible \"GOVERNMENT WARNING:\"");
     expect(params.input[0].content).toContain("Normal visual line wrapping");
     expect(params.input[0].content).toContain("a distinct enclosing box counts as separation");
     expect(params.input[0].content).toContain("visible relative font weight");
+    expect(params.input[0].content).toContain("it is not a compliance score");
     expect(params.input[1].content[1]).toMatchObject({ type: "input_image", detail: "original" });
     expect(params.input[1].content[1].image_url).toContain("data:image/jpeg;base64,");
   });

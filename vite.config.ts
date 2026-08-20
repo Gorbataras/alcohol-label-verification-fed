@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   root: "web",
+  publicDir: "../fixtures",
   build: {
     outDir: "../dist/client",
     emptyOutDir: true,

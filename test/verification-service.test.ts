@@ -27,6 +27,24 @@ describe("VerificationService", () => {
     expect(result.processingMs).toBeGreaterThanOrEqual(0);
   });
 
+  it("returns deterministic demo outcomes for the bundled sample filenames", async () => {
+    const service = new VerificationService(new FakeLabelExtractionRepository());
+    const compliant = await service.verify(matchingApplication, image("compliant.png"));
+    const mismatch = await service.verify(matchingApplication, image("brand-mismatch.png"));
+    const warning = await service.verify(matchingApplication, image("warning-case.png"));
+    const glare = await service.verify(matchingApplication, image("glare.png"));
+    const rotated = await service.verify(matchingApplication, image("rotated.png"));
+
+    expect(compliant.outcome).toBe("MATCH");
+    expect(mismatch.outcome).toBe("NEEDS_REVIEW");
+    expect(mismatch.outcome === "NEEDS_REVIEW" && mismatch.fields[0]).toMatchObject({ status: "MISMATCH" });
+    expect(warning.outcome).toBe("NEEDS_REVIEW");
+    expect(warning.outcome === "NEEDS_REVIEW" && warning.warningChecks[0]).toMatchObject({ status: "MISMATCH" });
+    expect(glare.outcome).toBe("NEEDS_REVIEW");
+    expect(glare.outcome === "NEEDS_REVIEW" && glare.fields[0]).toMatchObject({ status: "UNCERTAIN", confidence: 0.72 });
+    expect(rotated.outcome).toBe("MATCH");
+  });
+
   it("rejects unsupported, empty, oversized, and corrupt images", async () => {
     const service = new VerificationService(new FakeLabelExtractionRepository());
     await expect(service.verify(matchingApplication, image("label.gif", "image/gif"))).rejects.toMatchObject({ code: "UNSUPPORTED_IMAGE_TYPE" });

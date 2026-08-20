@@ -38,6 +38,8 @@ describe("verification API", () => {
     });
     expect(response.body.fields).toHaveLength(6);
     expect(response.body.warningChecks).toHaveLength(6);
+    expect(response.body.fields[0]).toMatchObject({ confidence: 0.98 });
+    expect(response.body.warningChecks[0]).toMatchObject({ confidence: 0.98 });
   });
 
   it("returns needs review for a mismatched extraction", async () => {

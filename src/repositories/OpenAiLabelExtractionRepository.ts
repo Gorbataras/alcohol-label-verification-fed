@@ -27,6 +27,8 @@ text.
 
 For producerNameAddress, return only the producer entity name and its address. Omit role labels
 such as "Distilled by", "Bottled by", or "Produced by", and omit separate country-of-origin text.
+Combine a producer name and address when they continue across adjacent lines. If an address shares
+a line with country-of-origin wording, retain the address portion and omit only the country clause.
 For countryOfOrigin, return only the country name or country code. Omit introductory wording such
 as "Product of", "Made in", or "Country of origin".
 
@@ -42,6 +44,12 @@ text. Separation is satisfied when whitespace, a border, or placement clearly se
 warning apart from unrelated text; a distinct enclosing box counts as separation. Judge boldness
 by visible relative font weight: a clearly heavier heading is bold and a
 regular-weight body is not bold. Use null only when image quality makes the weight indistinguishable.
+For confidence, provide a number from 0 to 1 for every extracted text value and every warning
+format observation. Confidence measures only visual certainty that the value or observation was
+read correctly from this image; it is not a compliance score. Use low confidence for blur, glare,
+low contrast, occlusion, cropping, small text, or ambiguity. Use 0 when no reliable observation
+can be made and never use confidence to infer missing text.
+
 imageUsable is false only when the image cannot support meaningful label review at all.`;
 
 export interface OpenAiRepositoryOptions {

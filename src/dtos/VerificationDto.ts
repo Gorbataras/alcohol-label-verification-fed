@@ -34,8 +34,28 @@ export const WarningFormatSchema = z.object({
     .nullable()
     .describe(
       "True when the warning is one continuous paragraph; normal visual line wrapping does not make it false.",
-    ),
+  ),
 });
+
+const ConfidenceSchema = z.number().min(0).max(1);
+
+export const ExtractionConfidenceSchema = z.object({
+  brandName: ConfidenceSchema,
+  classType: ConfidenceSchema,
+  alcoholContent: ConfidenceSchema,
+  netContents: ConfidenceSchema,
+  producerNameAddress: ConfidenceSchema,
+  countryOfOrigin: ConfidenceSchema,
+  governmentWarningText: ConfidenceSchema,
+  warningFormat: z.object({
+    headingIsUppercase: ConfidenceSchema,
+    headingIsBold: ConfidenceSchema,
+    bodyIsNotBold: ConfidenceSchema,
+    separateFromOtherText: ConfidenceSchema,
+    continuousParagraph: ConfidenceSchema,
+  }),
+});
+export type ExtractionConfidence = z.infer<typeof ExtractionConfidenceSchema>;
 
 export const ExtractedLabelSchema = z.object({
   imageUsable: z.boolean(),
@@ -62,6 +82,9 @@ export const ExtractedLabelSchema = z.object({
       "Exact visible warning including the GOVERNMENT WARNING: heading and both numbered statements.",
     ),
   warningFormat: WarningFormatSchema,
+  confidence: ExtractionConfidenceSchema.describe(
+    "Visual extraction certainty for each value or formatting observation. This is not a compliance score.",
+  ),
 });
 export type ExtractedLabel = z.infer<typeof ExtractedLabelSchema>;
 
@@ -90,6 +113,7 @@ export const FieldCheckSchema = z.object({
   expected: z.string().nullable(),
   observed: z.string().nullable(),
   score: z.number().min(0).max(1).nullable(),
+  confidence: ConfidenceSchema.describe("Visual certainty of the extracted label value."),
   detail: z.string(),
 });
 export type FieldCheck = z.infer<typeof FieldCheckSchema>;
@@ -108,6 +132,7 @@ export const WarningCheckSchema = z.object({
   status: z.enum(["MATCH", "MISMATCH", "NOT_FOUND", "UNCERTAIN"]),
   expected: z.union([z.string(), z.boolean()]),
   observed: z.union([z.string(), z.boolean()]).nullable(),
+  confidence: ConfidenceSchema.describe("Visual certainty of the extracted warning observation."),
   detail: z.string(),
 });
 export type WarningCheck = z.infer<typeof WarningCheckSchema>;

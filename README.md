@@ -1,6 +1,6 @@
 # Distilled-Spirits Label Verification
 
-A standalone decision-support prototype for comparing a distilled-spirits label image with application values. It reviews brand name, class/type, alcohol content, net contents, producer name/address, optional country of origin, and the required government warning text and selected formatting rules.
+A standalone decision-support prototype for reviewing distilled-spirits applications that have already been submitted. It compares the submitted values and label image for brand name, class/type, alcohol content, net contents, producer name/address, optional country of origin, and the required government warning text and selected formatting rules.
 
 The result is `MATCH`, `NEEDS_REVIEW`, or `UNABLE_TO_VERIFY`. A compliance agent always makes the final decision.
 
@@ -16,7 +16,7 @@ routes → controllers → services → LabelExtractionRepository
 
 Services contain image preprocessing and deterministic comparison logic and never import Express request/response types. The concrete extraction repository is selected only in `src/server.ts`. There is no database, Redis, authentication, or server-side document retention.
 
-The same-origin Vanilla TypeScript/Vite interface supports a single form and CSV-driven browser batches of up to 300 labels. The browser sends API chunks of five with two chunks in flight, keeps files/results only in the current tab, and exports results as CSV.
+The same-origin Vanilla TypeScript/Vite interface is a reviewer workspace. It includes five bundled mock submissions that represent an upstream submission handoff; reviewers select a submitted application and run the complete demo without entering values or uploading files. The browser sends the five bundled images and their submitted values in one batch request, and keeps results only in the current tab.
 
 See [docs/dependencies.md](docs/dependencies.md) for the purpose, usage location, and tradeoffs of every direct runtime and development dependency.
 
@@ -65,6 +65,18 @@ npm run check             # Typecheck, tests, and production build
 
 API documentation is available at [http://localhost:3000/docs](http://localhost:3000/docs), with the OpenAPI 3.1 document at `/openapi.json`.
 
+## Reviewer demo
+
+Open the browser UI and select **Run demo**. The queue contains five representative submitted applications:
+
+- Clear, compliant label
+- Submitted brand mismatch
+- Warning-heading formatting issue
+- Glare that lowers extraction confidence
+- Rotated image that remains readable
+
+Each review keeps the applicant's submitted values visible next to the label image. Extraction confidence is a visual-readability estimate, not a compliance score. A confidence below 85% makes that check `UNCERTAIN` and requires manual review, even when the extracted text appears to match or differ.
+
 ## API examples
 
 Start with the deterministic provider:
@@ -83,16 +95,6 @@ curl -sS -X POST http://localhost:3000/api/v1/verifications \
 
 For `/api/v1/verifications/batch`, repeat the `images` multipart field one to five times and provide an ordered JSON array in `applications`. A malformed item is isolated as `UNABLE_TO_VERIFY`; structurally invalid batches return a top-level error.
 
-## Batch CSV
-
-Download the template from the browser. Required columns are:
-
-```text
-reference_id,image_filename,brand_name,class_type,alcohol_content,net_contents,producer_name_address,country_of_origin
-```
-
-`country_of_origin` may be blank. Image filenames must be unique and match selected files exactly. Refreshing or closing the tab discards unfinished work; export completed results before leaving.
-
 ## Matching and regulatory scope
 
 - Text comparison is case/punctuation/whitespace normalized, then uses a conservative 0.92 fuzzy threshold.
@@ -100,6 +102,7 @@ reference_id,image_filename,brand_name,class_type,alcohol_content,net_contents,p
 - Supported volume units are normalized to milliliters with a 1 mL tolerance.
 - Warning text preserves wording, capitalization, and punctuation while normalizing only layout whitespace.
 - The warning heading must be uppercase and bold; the body must not be bold; the statement must be separate and a continuous paragraph.
+- Extraction confidence below 0.85 is treated as uncertain and never produces a match or mismatch determination.
 
 The prototype covers distilled spirits and application-to-label matching. It does **not** measure type size, make same-field-of-vision determinations, validate every TTB rule, integrate with COLA, or provide a legal approval.
 
@@ -108,6 +111,44 @@ Regulatory reference: [TTB Distilled Spirits Health Warning Statement](https://w
 The OpenAI integration follows the official [Images and vision](https://developers.openai.com/api/docs/guides/images-vision) and [Structured model outputs](https://developers.openai.com/api/docs/guides/structured-outputs) guidance.
 
 ## Docker
+
+### Docker Compose deployment
+
+Copy the project to the server, create the server's environment file, and start it:
+
+```bash
+cp .env.example .env
+# Set OPENAI_API_KEY in .env.
+docker compose up -d --build
+docker compose ps
+```
+
+By default, Compose publishes the app at `127.0.0.1:3000`, which is suitable for an
+HTTPS reverse proxy on the same server. Point the proxy upstream to
+`http://127.0.0.1:3000`; the health endpoint is `/health`.
+
+To expose the app directly on the server network instead, set the following in `.env`
+and ensure TCP port 3000 is allowed by the server firewall:
+
+```dotenv
+APP_BIND_ADDRESS=0.0.0.0
+APP_PORT=3000
+```
+
+It will then be reachable at `http://SERVER_IP:3000`. Direct public exposure is not
+recommended because the prototype has no authentication and requests can consume the
+configured OpenAI quota. Do not copy a development `.env` containing a credential;
+create a new `.env` on the server and restrict its permissions with `chmod 600 .env`.
+
+Useful deployment commands:
+
+```bash
+docker compose logs -f app
+docker compose restart app
+docker compose down
+```
+
+### Docker CLI
 
 ```bash
 docker build -t alcohol-label-verification-fed .
@@ -124,7 +165,7 @@ For an offline smoke test, use `-e OCR_PROVIDER=fake` and omit the key. Open [ht
 
 ## Privacy and failure behavior
 
-- Images and application values are held in memory only and are not written to disk or a database.
+- The synthetic demo images are bundled as public static assets. Request images and application values are otherwise held in memory only and are not written to disk or a database.
 - Logs contain request method, path, status, and duration only.
 - The browser sends images only to this same-origin server; the OpenAI key never reaches the browser.
 - Provider timeouts and failures never produce a match. They return `UNABLE_TO_VERIFY` with a retryable, sanitized error.

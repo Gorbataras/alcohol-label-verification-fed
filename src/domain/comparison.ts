@@ -10,6 +10,15 @@ import { CANONICAL_GOVERNMENT_WARNING, normalizeWarningLayout } from "./warning.
 
 const MATCH_THRESHOLD = 0.92;
 const UNCERTAIN_THRESHOLD = 0.8;
+export const LOW_CONFIDENCE_THRESHOLD = 0.85;
+
+function isLowConfidence(confidence: number): boolean {
+  return confidence < LOW_CONFIDENCE_THRESHOLD;
+}
+
+function lowConfidenceDetail(): string {
+  return `Extraction confidence is below ${Math.round(LOW_CONFIDENCE_THRESHOLD * 100)}%; review the label image manually.`;
+}
 
 export function normalizeText(value: string): string {
   return value
@@ -63,6 +72,7 @@ function textCheck(
   field: FieldName,
   expected: string,
   observed: string | null,
+  confidence: number,
 ): FieldCheck {
   if (observed === null || !observed.trim()) {
     return {
@@ -71,10 +81,22 @@ function textCheck(
       expected,
       observed: null,
       score: null,
+      confidence,
       detail: "The value could not be read from the label.",
     };
   }
   const score = textSimilarity(expected, observed);
+  if (isLowConfidence(confidence)) {
+    return {
+      field,
+      status: "UNCERTAIN",
+      expected,
+      observed,
+      score,
+      confidence,
+      detail: lowConfidenceDetail(),
+    };
+  }
   if (score >= MATCH_THRESHOLD) {
     return {
       field,
@@ -82,6 +104,7 @@ function textCheck(
       expected,
       observed,
       score,
+      confidence,
       detail: score === 1 ? "Values match after normalization." : "Values are a high-confidence fuzzy match.",
     };
   }
@@ -92,6 +115,7 @@ function textCheck(
       expected,
       observed,
       score,
+      confidence,
       detail: "Values are similar but require an agent's review.",
     };
   }
@@ -101,6 +125,7 @@ function textCheck(
     expected,
     observed,
     score,
+    confidence,
     detail: "Values do not match.",
   };
 }
@@ -115,14 +140,17 @@ export function parseAbv(value: string): number | null {
   return null;
 }
 
-function abvCheck(expected: string, observed: string | null): FieldCheck {
+function abvCheck(expected: string, observed: string | null, confidence: number): FieldCheck {
   if (!observed) {
-    return { field: "alcoholContent", status: "NOT_FOUND", expected, observed: null, score: null, detail: "Alcohol content could not be read." };
+    return { field: "alcoholContent", status: "NOT_FOUND", expected, observed: null, score: null, confidence, detail: "Alcohol content could not be read." };
+  }
+  if (isLowConfidence(confidence)) {
+    return { field: "alcoholContent", status: "UNCERTAIN", expected, observed, score: null, confidence, detail: lowConfidenceDetail() };
   }
   const expectedAbv = parseAbv(expected);
   const observedAbv = parseAbv(observed);
   if (expectedAbv === null || observedAbv === null) {
-    return { field: "alcoholContent", status: "UNCERTAIN", expected, observed, score: null, detail: "Alcohol content could not be normalized." };
+    return { field: "alcoholContent", status: "UNCERTAIN", expected, observed, score: null, confidence, detail: "Alcohol content could not be normalized." };
   }
   const difference = Math.abs(expectedAbv - observedAbv);
   return {
@@ -131,6 +159,7 @@ function abvCheck(expected: string, observed: string | null): FieldCheck {
     expected,
     observed,
     score: Math.max(0, Math.round((1 - difference / Math.max(expectedAbv, 1)) * 1_000) / 1_000),
+    confidence,
     detail: difference <= 0.05 ? "Alcohol content matches after ABV/proof normalization." : "Alcohol content differs from the application.",
   };
 }
@@ -172,14 +201,17 @@ export function parseVolumeMl(value: string): number | null {
   return factor ? Number(match[1]) * factor : null;
 }
 
-function volumeCheck(expected: string, observed: string | null): FieldCheck {
+function volumeCheck(expected: string, observed: string | null, confidence: number): FieldCheck {
   if (!observed) {
-    return { field: "netContents", status: "NOT_FOUND", expected, observed: null, score: null, detail: "Net contents could not be read." };
+    return { field: "netContents", status: "NOT_FOUND", expected, observed: null, score: null, confidence, detail: "Net contents could not be read." };
+  }
+  if (isLowConfidence(confidence)) {
+    return { field: "netContents", status: "UNCERTAIN", expected, observed, score: null, confidence, detail: lowConfidenceDetail() };
   }
   const expectedMl = parseVolumeMl(expected);
   const observedMl = parseVolumeMl(observed);
   if (expectedMl === null || observedMl === null) {
-    return { field: "netContents", status: "UNCERTAIN", expected, observed, score: null, detail: "Net contents could not be normalized." };
+    return { field: "netContents", status: "UNCERTAIN", expected, observed, score: null, confidence, detail: "Net contents could not be normalized." };
   }
   const difference = Math.abs(expectedMl - observedMl);
   return {
@@ -188,6 +220,7 @@ function volumeCheck(expected: string, observed: string | null): FieldCheck {
     expected,
     observed,
     score: Math.max(0, Math.round((1 - difference / Math.max(expectedMl, 1)) * 1_000) / 1_000),
+    confidence,
     detail: difference <= 1 ? "Net contents match after unit normalization." : "Net contents differ from the application.",
   };
 }
@@ -225,28 +258,33 @@ export function canonicalizeCountry(value: string): string {
   return COUNTRY_CODES[normalized] ?? normalized.toLocaleUpperCase("en-US");
 }
 
-function countryCheck(expected: string | undefined, observed: string | null): FieldCheck {
+function countryCheck(expected: string | undefined, observed: string | null, confidence: number): FieldCheck {
   if (!expected?.trim()) {
-    return { field: "countryOfOrigin", status: "NOT_APPLICABLE", expected: null, observed, score: null, detail: "Country of origin was not supplied for this application." };
+    return { field: "countryOfOrigin", status: "NOT_APPLICABLE", expected: null, observed, score: null, confidence, detail: "Country of origin was not supplied for this application." };
   }
   if (!observed) {
-    return { field: "countryOfOrigin", status: "NOT_FOUND", expected, observed: null, score: null, detail: "Country of origin could not be read." };
+    return { field: "countryOfOrigin", status: "NOT_FOUND", expected, observed: null, score: null, confidence, detail: "Country of origin could not be read." };
+  }
+  if (isLowConfidence(confidence)) {
+    return { field: "countryOfOrigin", status: "UNCERTAIN", expected, observed, score: null, confidence, detail: lowConfidenceDetail() };
   }
   const matches = canonicalizeCountry(expected) === canonicalizeCountry(observed);
-  return { field: "countryOfOrigin", status: matches ? "MATCH" : "MISMATCH", expected, observed, score: matches ? 1 : 0, detail: matches ? "Countries match after canonicalization." : "Country of origin differs from the application." };
+  return { field: "countryOfOrigin", status: matches ? "MATCH" : "MISMATCH", expected, observed, score: matches ? 1 : 0, confidence, detail: matches ? "Countries match after canonicalization." : "Country of origin differs from the application." };
 }
 
 function booleanWarningCheck(
   check: WarningCheck["check"],
   observed: boolean | null,
+  confidence: number,
   detail: string,
 ): WarningCheck {
   return {
     check,
-    status: observed === null ? "UNCERTAIN" : observed ? "MATCH" : "MISMATCH",
+    status: observed === null || isLowConfidence(confidence) ? "UNCERTAIN" : observed ? "MATCH" : "MISMATCH",
     expected: true,
     observed,
-    detail: observed === null ? "The formatting could not be determined from the image." : detail,
+    confidence,
+    detail: observed === null ? "The formatting could not be determined from the image." : isLowConfidence(confidence) ? lowConfidenceDetail() : detail,
   };
 }
 
@@ -254,6 +292,8 @@ export function compareWarning(extracted: ExtractedLabel): WarningCheck[] {
   const observedText = extracted.governmentWarningText;
   const textStatus = observedText === null
     ? "NOT_FOUND"
+    : isLowConfidence(extracted.confidence.governmentWarningText)
+      ? "UNCERTAIN"
     : normalizeWarningLayout(observedText) === normalizeWarningLayout(CANONICAL_GOVERNMENT_WARNING)
       ? "MATCH"
       : "MISMATCH";
@@ -262,15 +302,16 @@ export function compareWarning(extracted: ExtractedLabel): WarningCheck[] {
     status: textStatus,
     expected: CANONICAL_GOVERNMENT_WARNING,
     observed: observedText,
-    detail: textStatus === "MATCH" ? "Warning wording, capitalization, and punctuation match." : textStatus === "NOT_FOUND" ? "The government warning could not be read." : "Warning wording, capitalization, or punctuation differs from the required text.",
+    confidence: extracted.confidence.governmentWarningText,
+    detail: textStatus === "MATCH" ? "Warning wording, capitalization, and punctuation match." : textStatus === "NOT_FOUND" ? "The government warning could not be read." : textStatus === "UNCERTAIN" ? lowConfidenceDetail() : "Warning wording, capitalization, or punctuation differs from the required text.",
   };
   return [
     text,
-    booleanWarningCheck("headingUppercase", extracted.warningFormat.headingIsUppercase, "The warning heading is uppercase."),
-    booleanWarningCheck("headingBold", extracted.warningFormat.headingIsBold, "The warning heading is bold."),
-    booleanWarningCheck("bodyNotBold", extracted.warningFormat.bodyIsNotBold, "The warning body is not bold."),
-    booleanWarningCheck("separateFromOtherText", extracted.warningFormat.separateFromOtherText, "The warning is separate from surrounding text."),
-    booleanWarningCheck("continuousParagraph", extracted.warningFormat.continuousParagraph, "The warning appears as a continuous paragraph."),
+    booleanWarningCheck("headingUppercase", extracted.warningFormat.headingIsUppercase, extracted.confidence.warningFormat.headingIsUppercase, "The warning heading is uppercase."),
+    booleanWarningCheck("headingBold", extracted.warningFormat.headingIsBold, extracted.confidence.warningFormat.headingIsBold, "The warning heading is bold."),
+    booleanWarningCheck("bodyNotBold", extracted.warningFormat.bodyIsNotBold, extracted.confidence.warningFormat.bodyIsNotBold, "The warning body is not bold."),
+    booleanWarningCheck("separateFromOtherText", extracted.warningFormat.separateFromOtherText, extracted.confidence.warningFormat.separateFromOtherText, "The warning is separate from surrounding text."),
+    booleanWarningCheck("continuousParagraph", extracted.warningFormat.continuousParagraph, extracted.confidence.warningFormat.continuousParagraph, "The warning appears as a continuous paragraph."),
   ];
 }
 
@@ -281,12 +322,12 @@ export function compareLabel(
   processingMs: number,
 ): VerificationSuccess {
   const fields: FieldCheck[] = [
-    textCheck("brandName", application.brandName, extracted.brandName),
-    textCheck("classType", application.classType, extracted.classType),
-    abvCheck(application.alcoholContent, extracted.alcoholContent),
-    volumeCheck(application.netContents, extracted.netContents),
-    textCheck("producerNameAddress", application.producerNameAddress, extracted.producerNameAddress),
-    countryCheck(application.countryOfOrigin, extracted.countryOfOrigin),
+    textCheck("brandName", application.brandName, extracted.brandName, extracted.confidence.brandName),
+    textCheck("classType", application.classType, extracted.classType, extracted.confidence.classType),
+    abvCheck(application.alcoholContent, extracted.alcoholContent, extracted.confidence.alcoholContent),
+    volumeCheck(application.netContents, extracted.netContents, extracted.confidence.netContents),
+    textCheck("producerNameAddress", application.producerNameAddress, extracted.producerNameAddress, extracted.confidence.producerNameAddress),
+    countryCheck(application.countryOfOrigin, extracted.countryOfOrigin, extracted.confidence.countryOfOrigin),
   ];
   const warningChecks = compareWarning(extracted);
   const allFieldsMatch = fields.every((field) => field.status === "MATCH" || field.status === "NOT_APPLICABLE");

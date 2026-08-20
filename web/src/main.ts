@@ -1,16 +1,13 @@
-import { verifyChunk, verifySingle } from "./api.js";
-import { processBrowserBatch } from "./batch.js";
-import { CSV_TEMPLATE, outcomesToCsv, parseBatchCsv, type BatchCsvRow } from "./csv.js";
+import { verifyChunk } from "./api.js";
+import { MOCK_SUBMISSIONS } from "./mock-submissions.js";
 import type {
-  ApplicationInput,
-  BatchEntry,
   FieldCheck,
+  SubmittedApplication,
   VerificationOutcome,
   WarningCheck,
 } from "./types.js";
 
-const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
-const SUPPORTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const LOW_CONFIDENCE_THRESHOLD = 0.85;
 
 const FIELD_LABELS: Record<string, string> = {
   brandName: "Brand name",
@@ -77,27 +74,50 @@ function appendDefinition(list: HTMLDListElement, term: string, value: string): 
   list.append(create("dt", undefined, term), create("dd", undefined, value));
 }
 
+function confidenceText(confidence: number): string {
+  return `${Math.round(confidence * 100)}%`;
+}
+
+function confidenceBadge(confidence: number): HTMLSpanElement | null {
+  if (confidence >= LOW_CONFIDENCE_THRESHOLD) return null;
+  return create("span", "low-confidence", "Low confidence");
+}
+
 function fieldCard(field: FieldCheck): HTMLLIElement {
   const item = create("li", "check-card");
   item.dataset.status = field.status;
-  item.append(create("strong", undefined, `${FIELD_LABELS[field.field] ?? field.field}: ${STATUS_LABELS[field.status] ?? field.status}`));
+  const heading = create(
+    "strong",
+    undefined,
+    `${FIELD_LABELS[field.field] ?? field.field}: ${STATUS_LABELS[field.status] ?? field.status}`,
+  );
+  const badge = confidenceBadge(field.confidence);
+  if (badge) heading.append(" ", badge);
   const values = create("dl");
-  appendDefinition(values, "Expected", field.expected ?? "Not applicable");
-  appendDefinition(values, "Observed", field.observed ?? "Not found");
+  appendDefinition(values, "Submitted", field.expected ?? "Not applicable");
+  appendDefinition(values, "Extracted", field.observed ?? "Not found");
+  appendDefinition(values, "Extraction confidence", confidenceText(field.confidence));
   if (field.score !== null) appendDefinition(values, "Similarity", `${Math.round(field.score * 100)}%`);
   appendDefinition(values, "Reason", field.detail);
-  item.append(values);
+  item.append(heading, values);
   return item;
 }
 
 function warningCard(check: WarningCheck): HTMLLIElement {
   const item = create("li", "check-card");
   item.dataset.status = check.status;
-  item.append(create("strong", undefined, `${WARNING_LABELS[check.check] ?? check.check}: ${STATUS_LABELS[check.status] ?? check.status}`));
+  const heading = create(
+    "strong",
+    undefined,
+    `${WARNING_LABELS[check.check] ?? check.check}: ${STATUS_LABELS[check.status] ?? check.status}`,
+  );
+  const badge = confidenceBadge(check.confidence);
+  if (badge) heading.append(" ", badge);
   const values = create("dl");
-  appendDefinition(values, "Observed", valueText(check.observed));
+  appendDefinition(values, "Extracted", valueText(check.observed));
+  appendDefinition(values, "Extraction confidence", confidenceText(check.confidence));
   appendDefinition(values, "Reason", check.detail);
-  item.append(values);
+  item.append(heading, values);
   return item;
 }
 
@@ -128,7 +148,7 @@ export function renderOutcome(
     return;
   }
 
-  target.append(create("h3", undefined, "Application comparisons"));
+  target.append(create("h3", undefined, "Submitted value comparisons"));
   const fields = create("ul", "check-list");
   outcome.fields.forEach((field) => fields.append(fieldCard(field)));
   target.append(fields, create("h3", undefined, "Government warning checks"));
@@ -137,22 +157,32 @@ export function renderOutcome(
   target.append(warnings);
 }
 
-function download(filename: string, contents: string): void {
-  const url = URL.createObjectURL(new Blob([contents], { type: "text/csv;charset=utf-8" }));
-  const anchor = create("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+function applicationDetails(submission: SubmittedApplication): HTMLDListElement {
+  const details = create("dl", "application-values");
+  appendDefinition(details, "Brand name", submission.application.brandName);
+  appendDefinition(details, "Class or type", submission.application.classType);
+  appendDefinition(details, "Alcohol content", submission.application.alcoholContent);
+  appendDefinition(details, "Net contents", submission.application.netContents);
+  appendDefinition(details, "Producer name and address", submission.application.producerNameAddress);
+  appendDefinition(details, "Country of origin", submission.application.countryOfOrigin ?? "Not supplied");
+  return details;
 }
 
-function imageError(file: File): string | null {
-  if (!SUPPORTED_TYPES.has(file.type)) return `${file.name}: use a JPEG, PNG, or WebP image.`;
-  if (!file.size) return `${file.name}: the image is empty.`;
-  if (file.size > MAX_IMAGE_BYTES) return `${file.name}: the image is larger than 15 MiB.`;
-  return null;
+function queueState(outcome: VerificationOutcome | undefined, running: boolean): string {
+  if (running) return "Analyzing";
+  return outcome ? outcomeLabel(outcome.outcome) : "Ready for review";
+}
+
+async function loadDemoEntries(signal: AbortSignal) {
+  return Promise.all(MOCK_SUBMISSIONS.map(async (submission) => {
+    const response = await fetch(submission.imageUrl, { signal });
+    if (!response.ok) throw new Error(`Could not load ${submission.imageFilename} for the demo.`);
+    const image = await response.blob();
+    return {
+      application: submission.application,
+      image: new File([image], submission.imageFilename, { type: image.type || "image/png" }),
+    };
+  }));
 }
 
 export function initializeApp(root: Document = document): void {
@@ -160,255 +190,135 @@ export function initializeApp(root: Document = document): void {
   root.documentElement.dataset.labelReviewInitialized = "true";
 
   const errorSummary = required<HTMLElement>(root, "#error-summary");
-  const singleMode = required<HTMLButtonElement>(root, "#single-mode");
-  const batchMode = required<HTMLButtonElement>(root, "#batch-mode");
-  const singlePanel = required<HTMLElement>(root, "#single-panel");
-  const batchPanel = required<HTMLElement>(root, "#batch-panel");
-  const singleForm = required<HTMLFormElement>(root, "#single-form");
-  const singleSubmit = required<HTMLButtonElement>(root, "#single-submit");
-  const singleStatus = required<HTMLElement>(root, "#single-status");
-  const singleResults = required<HTMLElement>(root, "#single-results");
-  const csvInput = required<HTMLInputElement>(root, "#batch-csv");
-  const imagesInput = required<HTMLInputElement>(root, "#batch-images");
-  const preflight = required<HTMLElement>(root, "#batch-preflight");
-  const batchStart = required<HTMLButtonElement>(root, "#batch-start");
-  const batchCancel = required<HTMLButtonElement>(root, "#batch-cancel");
-  const progressWrap = required<HTMLElement>(root, "#batch-progress-wrap");
-  const progress = required<HTMLProgressElement>(root, "#batch-progress");
-  const batchStatus = required<HTMLElement>(root, "#batch-status");
-  const batchResults = required<HTMLElement>(root, "#batch-results");
+  const runDemo = required<HTMLButtonElement>(root, "#run-demo");
+  const status = required<HTMLElement>(root, "#demo-status");
+  const progressWrap = required<HTMLElement>(root, "#demo-progress-wrap");
+  const progress = required<HTMLProgressElement>(root, "#demo-progress");
+  const queue = required<HTMLElement>(root, "#application-queue");
+  const detail = required<HTMLElement>(root, "#application-detail");
 
-  let batchEntries: BatchEntry[] = [];
-  let batchOutcomes: VerificationOutcome[] = [];
-  let batchController: AbortController | null = null;
-  let preflightVersion = 0;
+  let selectedReference = MOCK_SUBMISSIONS[0]!.application.referenceId;
+  let outcomes = new Map<string, VerificationOutcome>();
+  let running = false;
 
   function clearErrors(): void {
     errorSummary.hidden = true;
     errorSummary.replaceChildren();
   }
 
-  function showErrors(messages: string[], focus = true): void {
-    errorSummary.replaceChildren(create("strong", undefined, "Please fix the following:"));
-    const list = create("ul");
-    messages.forEach((message) => list.append(create("li", undefined, message)));
-    errorSummary.append(list);
+  function showError(message: string): void {
+    errorSummary.replaceChildren(create("strong", undefined, "The demo could not run."), create("p", undefined, message));
     errorSummary.hidden = false;
-    if (focus) errorSummary.focus();
+    errorSummary.focus();
   }
 
-  function setMode(mode: "single" | "batch"): void {
-    const isSingle = mode === "single";
-    singlePanel.hidden = !isSingle;
-    batchPanel.hidden = isSingle;
-    singleMode.classList.toggle("is-active", isSingle);
-    batchMode.classList.toggle("is-active", !isSingle);
-    singleMode.setAttribute("aria-pressed", String(isSingle));
-    batchMode.setAttribute("aria-pressed", String(!isSingle));
-    clearErrors();
-    required<HTMLElement>(root, isSingle ? "#single-heading" : "#batch-heading").focus?.();
-  }
-
-  singleMode.addEventListener("click", () => setMode("single"));
-  batchMode.addEventListener("click", () => setMode("batch"));
-
-  singleForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    clearErrors();
-    const invalid = Array.from(singleForm.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(":invalid"));
-    if (invalid.length) {
-      invalid.forEach((field) => field.setAttribute("aria-invalid", "true"));
-      showErrors(invalid.map((field) => `${field.closest("label")?.firstChild?.textContent?.trim() || field.name} is required.`));
-      invalid[0]?.focus();
-      return;
-    }
-    singleForm.querySelectorAll("[aria-invalid]").forEach((field) => field.removeAttribute("aria-invalid"));
-    const formData = new FormData(singleForm);
-    const image = formData.get("image");
-    if (!(image instanceof File)) {
-      showErrors(["Choose a label image."]);
-      return;
-    }
-    const fileProblem = imageError(image);
-    if (fileProblem) {
-      showErrors([fileProblem]);
-      return;
-    }
-    const value = (name: string) => String(formData.get(name) ?? "").trim();
-    const application: ApplicationInput = {
-      referenceId: value("referenceId"),
-      brandName: value("brandName"),
-      classType: value("classType"),
-      alcoholContent: value("alcoholContent"),
-      netContents: value("netContents"),
-      producerNameAddress: value("producerNameAddress"),
-      ...(value("countryOfOrigin") ? { countryOfOrigin: value("countryOfOrigin") } : {}),
-    };
-    singleSubmit.disabled = true;
-    singleStatus.textContent = "Checking the label. This usually takes less than five seconds.";
-    singleResults.hidden = true;
-    try {
-      const result = await verifySingle(application, image);
-      renderOutcome(result, singleResults);
-      singleResults.hidden = false;
-      singleStatus.textContent = `${outcomeLabel(result.outcome)}. Review the details below.`;
-      singleResults.focus();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "The label could not be checked.";
-      showErrors([message]);
-      singleStatus.textContent = "The review did not finish.";
-    } finally {
-      singleSubmit.disabled = false;
-    }
-  });
-
-  required<HTMLButtonElement>(root, "#download-template").addEventListener("click", () => {
-    download("distilled-spirits-label-template.csv", CSV_TEMPLATE);
-  });
-
-  async function runPreflight(): Promise<void> {
-    const version = ++preflightVersion;
-    clearErrors();
-    batchEntries = [];
-    batchStart.disabled = true;
-    const csvFile = csvInput.files?.[0];
-    const imageFiles = Array.from(imagesInput.files ?? []);
-    if (!csvFile || !imageFiles.length) {
-      preflight.textContent = "Choose both the application CSV and label images.";
-      return;
-    }
-    const parsed = parseBatchCsv(await csvFile.text());
-    if (version !== preflightVersion) return;
-    const errors = [...parsed.errors];
-    const imageMap = new Map<string, File>();
-    imageFiles.forEach((file) => {
-      if (imageMap.has(file.name)) errors.push(`Two selected images are named “${file.name}”. Filenames must be unique.`);
-      imageMap.set(file.name, file);
-      const problem = imageError(file);
-      if (problem) errors.push(problem);
-    });
-    parsed.rows.forEach((row) => {
-      if (!imageMap.has(row.imageFilename)) errors.push(`CSV row ${row.rowNumber}: image “${row.imageFilename}” was not selected.`);
-    });
-    if (errors.length) {
-      preflight.textContent = `${errors.length} problem${errors.length === 1 ? "" : "s"} found.`;
-      showErrors(errors, false);
-      return;
-    }
-    batchEntries = parsed.rows.map((row) => ({
-      application: row.application,
-      image: imageMap.get(row.imageFilename)!,
-    }));
-    const usedNames = new Set(parsed.rows.map((row) => row.imageFilename));
-    const extras = imageFiles.filter((file) => !usedNames.has(file.name)).length;
-    preflight.textContent = `${batchEntries.length} application${batchEntries.length === 1 ? "" : "s"} ready${extras ? `; ${extras} unreferenced image${extras === 1 ? "" : "s"} will be ignored` : ""}.`;
-    batchStart.disabled = false;
-  }
-
-  csvInput.addEventListener("change", () => void runPreflight());
-  imagesInput.addEventListener("change", () => void runPreflight());
-
-  function renderBatchResults(): void {
-    batchResults.replaceChildren();
-    const header = create("div", "result-header");
-    header.append(create("h2", undefined, "Batch results"));
-    const exportButton = create("button", "secondary-action", "Export results CSV");
-    exportButton.type = "button";
-    exportButton.addEventListener("click", () => download("label-review-results.csv", outcomesToCsv(batchOutcomes)));
-    header.append(exportButton);
-    batchResults.append(header);
-
-    const summary = create("div", "batch-summary");
-    const counts = [
-      ["Matched", batchOutcomes.filter((result) => result.outcome === "MATCH").length],
-      ["Needs review", batchOutcomes.filter((result) => result.outcome === "NEEDS_REVIEW").length],
-      ["Unable", batchOutcomes.filter((result) => result.outcome === "UNABLE_TO_VERIFY").length],
-    ] as const;
-    counts.forEach(([label, count]) => {
-      const card = create("div", "summary-card");
-      card.append(create("strong", undefined, String(count)), create("span", undefined, label));
-      summary.append(card);
-    });
-    batchResults.append(summary);
-
-    batchOutcomes.forEach((outcome, index) => {
-      const details = create("details", "batch-result");
-      const summaryLine = create("summary");
-      summaryLine.append(
-        create("span", undefined, `${outcome.referenceId} — `),
-        create("span", `outcome-badge ${statusClass(outcome.outcome)}`, outcomeLabel(outcome.outcome)),
+  function renderQueue(): void {
+    queue.replaceChildren();
+    MOCK_SUBMISSIONS.forEach((submission) => {
+      const outcome = outcomes.get(submission.application.referenceId);
+      const item = create("li", "queue-item");
+      const button = create("button", "queue-button");
+      button.type = "button";
+      button.setAttribute("aria-current", String(submission.application.referenceId === selectedReference));
+      const image = create("img", "queue-thumbnail") as HTMLImageElement;
+      image.src = submission.imageUrl;
+      image.alt = "";
+      const text = create("span", "queue-copy");
+      text.append(
+        create("strong", undefined, submission.application.referenceId),
+        create("span", undefined, submission.title),
       );
-      const content = create("div", "batch-result-content");
-      renderOutcome(outcome, content, { headingLevel: 3, showHeader: false });
-      if (outcome.outcome === "UNABLE_TO_VERIFY" && outcome.error.retryable) {
-        const retry = create("button", "secondary-action", "Retry this label");
-        retry.type = "button";
-        retry.addEventListener("click", async () => {
-          retry.disabled = true;
-          retry.textContent = "Retrying…";
-          try {
-            batchOutcomes[index] = await verifySingle(batchEntries[index]!.application, batchEntries[index]!.image);
-            renderBatchResults();
-            batchResults.focus();
-          } catch (error) {
-            showErrors([error instanceof Error ? error.message : "Retry failed."]);
-            retry.disabled = false;
-            retry.textContent = "Retry this label";
-          }
-        });
-        content.append(retry);
-      }
-      details.append(summaryLine, content);
-      batchResults.append(details);
+      const state = create("span", `queue-state ${outcome ? statusClass(outcome.outcome) : ""}`, queueState(outcome, running));
+      button.append(image, text, state);
+      button.addEventListener("click", () => {
+        selectedReference = submission.application.referenceId;
+        renderQueue();
+        renderDetail();
+      });
+      item.append(button);
+      queue.append(item);
     });
-    batchResults.hidden = false;
   }
 
-  batchStart.addEventListener("click", async () => {
-    if (!batchEntries.length) return;
+  function renderDetail(): void {
+    detail.replaceChildren();
+    const submission = MOCK_SUBMISSIONS.find((item) => item.application.referenceId === selectedReference) ?? MOCK_SUBMISSIONS[0]!;
+    const outcome = outcomes.get(submission.application.referenceId);
+    const header = create("div", "detail-header");
+    const headingGroup = create("div");
+    headingGroup.append(create("p", "step", "Submitted application"), create("h2", undefined, submission.application.referenceId), create("p", "detail-title", submission.title));
+    header.append(headingGroup);
+    if (outcome) header.append(create("span", `outcome-badge ${statusClass(outcome.outcome)}`, outcomeLabel(outcome.outcome)));
+    detail.append(header);
+
+    const submitted = create("section", "submitted-panel");
+    submitted.append(create("h3", undefined, "Submitted application values"), applicationDetails(submission));
+    const labelPanel = create("section", "label-panel");
+    labelPanel.append(create("h3", undefined, "Submitted label image"));
+    const label = create("img", "label-image") as HTMLImageElement;
+    label.src = submission.imageUrl;
+    label.alt = `Submitted label for ${submission.application.referenceId}`;
+    labelPanel.append(label);
+    const overview = create("div", "application-overview");
+    overview.append(submitted, labelPanel);
+    detail.append(overview);
+
+    const result = create("section", "verification-result");
+    if (running) {
+      result.append(create("h3", undefined, "Automated review in progress"), create("p", undefined, "The submitted label is being read and compared with the submitted application values."));
+    } else if (outcome) {
+      renderOutcome(outcome, result, { headingLevel: 3, showHeader: false });
+    } else {
+      result.append(create("h3", undefined, "Ready for automated review"), create("p", undefined, "Run the demo to extract label information and compare it with this submitted application."));
+    }
+    detail.append(result);
+  }
+
+  function render(): void {
+    renderQueue();
+    renderDetail();
+  }
+
+  runDemo.addEventListener("click", async () => {
+    if (running) return;
     clearErrors();
-    batchController = new AbortController();
-    batchStart.disabled = true;
-    batchCancel.hidden = false;
+    running = true;
+    outcomes = new Map();
+    runDemo.disabled = true;
     progressWrap.hidden = false;
-    batchResults.hidden = true;
-    progress.max = batchEntries.length;
-    progress.value = 0;
-    batchStatus.textContent = `Starting ${batchEntries.length} label reviews.`;
+    progress.removeAttribute("value");
+    progress.max = MOCK_SUBMISSIONS.length;
+    status.textContent = `Preparing ${MOCK_SUBMISSIONS.length} submitted applications for review.`;
+    render();
+
     try {
-      batchOutcomes = await processBrowserBatch(batchEntries, verifyChunk, {
-        signal: batchController.signal,
-        chunkSize: 5,
-        concurrency: 2,
-        onProgress: ({ completed, total }) => {
-          progress.value = completed;
-          batchStatus.textContent = `${completed} of ${total} labels finished.`;
-        },
-      });
-      renderBatchResults();
-      batchStatus.textContent = `Finished ${batchEntries.length} label reviews.`;
-      batchResults.focus();
+      const controller = new AbortController();
+      const entries = await loadDemoEntries(controller.signal);
+      status.textContent = `Analyzing ${entries.length} submitted label images. This usually takes less than five seconds per label.`;
+      const response = await verifyChunk(entries, controller.signal);
+      outcomes = new Map(response.items.map((item) => [item.result.referenceId, item.result]));
+      selectedReference = MOCK_SUBMISSIONS.find((submission) => outcomes.get(submission.application.referenceId)?.outcome === "NEEDS_REVIEW")?.application.referenceId
+        ?? selectedReference;
+      progress.value = MOCK_SUBMISSIONS.length;
+      status.textContent = `Finished reviewing ${MOCK_SUBMISSIONS.length} submitted applications.`;
     } catch (error) {
-      if (batchController.signal.aborted) {
-        batchStatus.textContent = "Batch review cancelled. Completed results were not retained.";
-      } else {
-        showErrors([error instanceof Error ? error.message : "The batch could not be completed."]);
-      }
+      const message = error instanceof Error ? error.message : "The submitted applications could not be reviewed.";
+      status.textContent = "The demo did not finish.";
+      showError(message);
     } finally {
-      batchController = null;
-      batchStart.disabled = false;
-      batchCancel.hidden = true;
+      running = false;
+      runDemo.disabled = false;
+      runDemo.textContent = outcomes.size ? "Run demo again" : "Run demo";
+      render();
     }
   });
 
-  batchCancel.addEventListener("click", () => batchController?.abort());
+  render();
 }
 
 const boot = () => {
-  if (document.querySelector("#single-form")) initializeApp();
+  if (document.querySelector("#run-demo")) initializeApp();
 };
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once: true });
 else boot();
-
-export type { BatchCsvRow };

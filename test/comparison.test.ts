@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  LOW_CONFIDENCE_THRESHOLD,
   canonicalizeCountry,
   compareLabel,
   compareWarning,
@@ -63,6 +64,35 @@ describe("label result", () => {
     expect(mismatch.fields[2]?.status).toBe("NOT_FOUND");
   });
 
+  it("treats low-confidence extractions as uncertain before trusting a match or mismatch", () => {
+    const lowConfidenceMatch = compareLabel(
+      matchingApplication,
+      extractedLabel({ confidence: { brandName: LOW_CONFIDENCE_THRESHOLD - 0.01 } }),
+      "glare.png",
+      1,
+    );
+    const thresholdMatch = compareLabel(
+      matchingApplication,
+      extractedLabel({ confidence: { brandName: LOW_CONFIDENCE_THRESHOLD } }),
+      "clear.png",
+      1,
+    );
+    const lowConfidenceDifference = compareLabel(
+      matchingApplication,
+      extractedLabel({
+        brandName: "Different Brand",
+        confidence: { brandName: LOW_CONFIDENCE_THRESHOLD - 0.01 },
+      }),
+      "glare.png",
+      1,
+    );
+
+    expect(lowConfidenceMatch.fields[0]).toMatchObject({ status: "UNCERTAIN", confidence: 0.84 });
+    expect(thresholdMatch.fields[0]?.status).toBe("MATCH");
+    expect(lowConfidenceDifference.fields[0]?.status).toBe("UNCERTAIN");
+    expect(lowConfidenceMatch.outcome).toBe("NEEDS_REVIEW");
+  });
+
   it("preserves warning case and punctuation while normalizing layout whitespace", () => {
     const wrapped = CANONICAL_GOVERNMENT_WARNING.replaceAll(" ", "\n");
     expect(compareWarning(extractedLabel({ governmentWarningText: wrapped }))[0]?.status).toBe("MATCH");
@@ -92,5 +122,18 @@ describe("label result", () => {
     );
     expect(failed.outcome).toBe("NEEDS_REVIEW");
     expect(uncertain.outcome).toBe("NEEDS_REVIEW");
+  });
+
+  it("treats low-confidence warning observations as uncertain", () => {
+    const result = compareLabel(
+      matchingApplication,
+      extractedLabel({ confidence: { warningFormat: { headingIsBold: 0.5 } } }),
+      "glare.png",
+      1,
+    );
+    expect(result.warningChecks.find((check) => check.check === "headingBold")).toMatchObject({
+      status: "UNCERTAIN",
+      confidence: 0.5,
+    });
   });
 });

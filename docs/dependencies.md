@@ -12,7 +12,6 @@ This project keeps a deliberately small direct dependency surface. Every package
 | `sharp` | Safely decodes uploads, enforces a pixel ceiling, applies EXIF orientation, resizes without enlarging, flattens transparency, and emits a predictable JPEG before vision extraction. This reduces payload size and avoids sending corrupt or unexpectedly huge images upstream. | `src/services/VerificationService.ts`, fixture generator |
 | `multer` | Parses `multipart/form-data` directly into memory and applies file count/size limits for the single and batch image endpoints. No uploaded file is written to disk. | `src/routes/VerificationRoutes.ts`, error handler |
 | `express-rate-limit` | Supplies bounded, standards-header-aware, per-process abuse protection without introducing Redis or a database. This is appropriate for the single-container prototype. | `src/app.ts` |
-| `papaparse` | Correctly handles CSV quoting, embedded commas, headers, and parser diagnostics for 200–300 row browser batches. A hand-written `split(',')` parser would corrupt producer addresses and other quoted values. | `web/src/csv.ts` |
 | `@asteasolutions/zod-to-openapi` | Generates OpenAPI schemas from the same Zod contracts that validate the running API, avoiding a second contract that can drift. | `src/config/openapi.ts` |
 | `@scalar/express-api-reference` | Renders the generated OpenAPI document as an interactive, locally served `/docs` page. It does not send application data to a third-party service. | `src/config/openapi.ts` |
 
@@ -23,7 +22,7 @@ This project keeps a deliberately small direct dependency surface. Every package
 | `typescript` | Enforces strict compile-time checks across the server, browser code, scripts, and tests. |
 | `tsx` | Runs TypeScript directly for the development server, watch mode, and fixture-generation script. |
 | `vite` | Bundles the Vanilla TypeScript browser application and provides the local UI server/API proxy. |
-| `vitest` | Runs the unit, service, provider, HTTP contract, CSV, browser orchestration, and UI tests. |
+| `vitest` | Runs the unit, service, provider, HTTP contract, browser orchestration, and UI tests. |
 | `supertest` | Exercises the real Express middleware and multipart endpoints in memory without opening a network port. |
 | `jsdom` | Provides a browser-like DOM for UI behavior and accessibility tests under Vitest. |
 | `axe-core` | Performs automated accessibility checks on the initial application document. It supplements, but does not replace, keyboard and assistive-technology review. |
@@ -31,7 +30,6 @@ This project keeps a deliberately small direct dependency surface. Every package
 | `@types/express` | Adds TypeScript declarations for Express request, response, router, and error middleware APIs. |
 | `@types/multer` | Adds declarations for in-memory uploaded files and multipart middleware. |
 | `@types/node` | Adds declarations for Node.js buffers, paths, environment variables, and filesystem APIs. |
-| `@types/papaparse` | Adds declarations for parsed CSV rows, fields, and diagnostics. |
 | `@types/supertest` | Adds declarations for the HTTP test client. |
 
 ## Packages intentionally not used
