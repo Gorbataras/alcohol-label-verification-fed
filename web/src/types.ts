@@ -81,3 +81,9 @@ export interface SubmittedApplication {
 export interface QueueItem extends SubmittedApplication {
   image?: File;
 }
+
+export type AgentDecision = "APPROVED" | "DENIED";
+
+export interface DecidedItem extends QueueItem {
+  decision: AgentDecision;
+}

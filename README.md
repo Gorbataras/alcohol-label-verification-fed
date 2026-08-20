@@ -75,7 +75,7 @@ Open the browser UI. The review queue starts empty. Select **Load demo samples**
 - Glare that lowers extraction confidence
 - Rotated image that remains readable
 
-Use **Process selected** to review the open application, or **Process batch** to review the next 3, 5, 10, or a custom number of unprocessed items. Each review keeps the applicant's submitted values visible next to the label image. Extraction confidence is a visual-readability estimate, not a compliance score. A confidence below 85% makes that check `UNCERTAIN` and requires manual review, even when the extracted text appears to match or differ.
+Use **Process selected** to review the open application, or **Process batch** to review the next 3, 5, 10, or a custom number of unprocessed items. Each review keeps the applicant's submitted values visible next to the label image. After the automated result appears, **Approve** or **Deny** moves the application out of the queue into the **Agent decisions** summary. Extraction confidence is a visual-readability estimate, not a compliance score. A confidence below 85% makes that check `UNCERTAIN` and requires manual review, even when the extracted text appears to match or differ.
 
 ## API examples
 

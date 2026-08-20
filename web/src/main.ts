@@ -2,6 +2,8 @@ import { verifyChunk, verifySingle } from "./api.js";
 import { processBrowserBatch } from "./batch.js";
 import { MOCK_SUBMISSIONS } from "./mock-submissions.js";
 import type {
+  AgentDecision,
+  DecidedItem,
   FieldCheck,
   QueueItem,
   SubmittedApplication,
@@ -175,6 +177,14 @@ function queueState(outcome: VerificationOutcome | undefined, running: boolean):
   return outcome ? outcomeLabel(outcome.outcome) : "Ready for review";
 }
 
+function decisionLabel(decision: AgentDecision): string {
+  return decision === "APPROVED" ? "Approved" : "Denied";
+}
+
+function decisionClass(decision: AgentDecision): string {
+  return decision === "APPROVED" ? "outcome-approved" : "outcome-denied";
+}
+
 function copySubmission(submission: SubmittedApplication): QueueItem {
   return {
     title: submission.title,
@@ -229,6 +239,9 @@ export function initializeApp(root: Document = document): void {
   const progress = required<HTMLProgressElement>(root, "#demo-progress");
   const queueList = required<HTMLElement>(root, "#application-queue");
   const queueEmpty = required<HTMLElement>(root, "#queue-empty");
+  const decisionList = required<HTMLElement>(root, "#decision-list");
+  const decisionEmpty = required<HTMLElement>(root, "#decision-empty");
+  const decisionCounts = required<HTMLElement>(root, "#decision-counts");
   const detail = required<HTMLElement>(root, "#application-detail");
   const batchDialog = required<HTMLDialogElement>(root, "#batch-dialog");
   const batchForm = required<HTMLFormElement>(root, "#batch-form");
@@ -242,6 +255,7 @@ export function initializeApp(root: Document = document): void {
   const addCancel = required<HTMLButtonElement>(root, "#add-application-cancel");
 
   const queue: QueueItem[] = [];
+  const decided: DecidedItem[] = [];
   let selectedReference: string | null = null;
   const outcomes = new Map<string, VerificationOutcome>();
   const processingIds = new Set<string>();
@@ -266,13 +280,53 @@ export function initializeApp(root: Document = document): void {
     ));
   }
 
-  function updateActions(): void {
-    const selected = selectedReference
+  function knownReference(referenceId: string): boolean {
+    return queue.some((item) => item.application.referenceId === referenceId)
+      || decided.some((item) => item.application.referenceId === referenceId);
+  }
+
+  function selectedQueued(): QueueItem | undefined {
+    return selectedReference
       ? queue.find((item) => item.application.referenceId === selectedReference)
       : undefined;
+  }
+
+  function selectedDecided(): DecidedItem | undefined {
+    return selectedReference
+      ? decided.find((item) => item.application.referenceId === selectedReference)
+      : undefined;
+  }
+
+  function updateActions(): void {
     const busy = processingIds.size > 0;
-    processSelected.disabled = !selected || busy;
+    processSelected.disabled = !selectedQueued() || busy;
     processBatchButton.disabled = busy || unprocessedItems().length === 0;
+  }
+
+  function submissionButton(
+    submission: QueueItem,
+    stateText: string,
+    stateClassName: string,
+    onSelect: () => void,
+  ): HTMLLIElement {
+    const referenceId = submission.application.referenceId;
+    const item = create("li", "queue-item");
+    const button = create("button", "queue-button");
+    button.type = "button";
+    button.setAttribute("aria-current", String(referenceId === selectedReference));
+    const image = create("img", "queue-thumbnail") as HTMLImageElement;
+    image.src = submission.imageUrl;
+    image.alt = "";
+    const text = create("span", "queue-copy");
+    text.append(
+      create("strong", undefined, referenceId),
+      create("span", undefined, submission.title),
+    );
+    const state = create("span", `queue-state ${stateClassName}`, stateText);
+    button.append(image, text, state);
+    button.addEventListener("click", onSelect);
+    item.append(button);
+    return item;
   }
 
   function renderQueue(): void {
@@ -281,62 +335,40 @@ export function initializeApp(root: Document = document): void {
     queue.forEach((submission) => {
       const referenceId = submission.application.referenceId;
       const outcome = outcomes.get(referenceId);
-      const item = create("li", "queue-item");
-      const button = create("button", "queue-button");
-      button.type = "button";
-      button.setAttribute("aria-current", String(referenceId === selectedReference));
-      const image = create("img", "queue-thumbnail") as HTMLImageElement;
-      image.src = submission.imageUrl;
-      image.alt = "";
-      const text = create("span", "queue-copy");
-      text.append(
-        create("strong", undefined, referenceId),
-        create("span", undefined, submission.title),
-      );
-      const state = create(
-        "span",
-        `queue-state ${outcome && !processingIds.has(referenceId) ? statusClass(outcome.outcome) : ""}`,
-        queueState(outcome, processingIds.has(referenceId)),
-      );
-      button.append(image, text, state);
-      button.addEventListener("click", () => {
-        selectedReference = referenceId;
-        renderQueue();
-        renderDetail();
-        updateActions();
-      });
-      item.append(button);
-      queueList.append(item);
+      const running = processingIds.has(referenceId);
+      queueList.append(submissionButton(
+        submission,
+        queueState(outcome, running),
+        outcome && !running ? statusClass(outcome.outcome) : "",
+        () => {
+          selectedReference = referenceId;
+          render();
+        },
+      ));
     });
   }
 
-  function renderDetail(): void {
-    detail.replaceChildren();
-    const submission = queue.find((item) => item.application.referenceId === selectedReference);
-    if (!submission) {
-      detail.append(
-        create("p", "step", "Submitted application"),
-        create("h2", undefined, "No application selected"),
-        create("p", undefined, "Load demo samples or add an application to start a review."),
-      );
-      return;
-    }
+  function renderDecisions(): void {
+    const approved = decided.filter((item) => item.decision === "APPROVED").length;
+    const denied = decided.length - approved;
+    decisionCounts.textContent = `Approved ${approved} · Denied ${denied}`;
+    decisionEmpty.hidden = decided.length > 0;
+    decisionList.replaceChildren();
+    decided.forEach((submission) => {
+      const referenceId = submission.application.referenceId;
+      decisionList.append(submissionButton(
+        submission,
+        decisionLabel(submission.decision),
+        decisionClass(submission.decision),
+        () => {
+          selectedReference = referenceId;
+          render();
+        },
+      ));
+    });
+  }
 
-    const outcome = outcomes.get(submission.application.referenceId);
-    const running = processingIds.has(submission.application.referenceId);
-    const header = create("div", "detail-header");
-    const headingGroup = create("div");
-    headingGroup.append(
-      create("p", "step", "Submitted application"),
-      create("h2", undefined, submission.application.referenceId),
-      create("p", "detail-title", submission.title),
-    );
-    header.append(headingGroup);
-    if (outcome && !running) {
-      header.append(create("span", `outcome-badge ${statusClass(outcome.outcome)}`, outcomeLabel(outcome.outcome)));
-    }
-    detail.append(header);
-
+  function appendApplicationOverview(target: HTMLElement, submission: QueueItem): void {
     const submitted = create("section", "submitted-panel");
     submitted.append(create("h3", undefined, "Submitted application values"), applicationDetails(submission));
     const labelPanel = create("section", "label-panel");
@@ -347,9 +379,12 @@ export function initializeApp(root: Document = document): void {
     labelPanel.append(label);
     const overview = create("div", "application-overview");
     overview.append(submitted, labelPanel);
-    detail.append(overview);
+    target.append(overview);
+  }
 
+  function appendVerification(target: HTMLElement, referenceId: string, running: boolean): void {
     const result = create("section", "verification-result");
+    const outcome = outcomes.get(referenceId);
     if (running) {
       result.append(
         create("h3", undefined, "Automated review in progress"),
@@ -363,11 +398,85 @@ export function initializeApp(root: Document = document): void {
         create("p", undefined, "Process this application or a batch of unprocessed items to extract label information and compare it with the submitted values."),
       );
     }
-    detail.append(result);
+    target.append(result);
+  }
+
+  function appendDecisionActions(target: HTMLElement, referenceId: string): void {
+    const panel = create("section", "decision-actions");
+    panel.append(
+      create("h3", undefined, "Agent decision"),
+      create("p", undefined, "Approve or deny this application after reviewing the automated result. The decision stays in this tab only."),
+    );
+    const buttons = create("div", "decision-buttons");
+    const approve = create("button", "primary-action", "Approve");
+    approve.type = "button";
+    approve.id = "approve-application";
+    approve.addEventListener("click", () => recordDecision(referenceId, "APPROVED"));
+    const deny = create("button", "danger-action", "Deny");
+    deny.type = "button";
+    deny.id = "deny-application";
+    deny.addEventListener("click", () => recordDecision(referenceId, "DENIED"));
+    buttons.append(approve, deny);
+    panel.append(buttons);
+    target.append(panel);
+  }
+
+  function renderDetail(): void {
+    detail.replaceChildren();
+    const queued = selectedQueued();
+    const completed = selectedDecided();
+    const submission = queued ?? completed;
+    if (!submission) {
+      detail.append(
+        create("p", "step", "Submitted application"),
+        create("h2", undefined, "No application selected"),
+        create("p", undefined, "Load demo samples or add an application to start a review."),
+      );
+      return;
+    }
+
+    const referenceId = submission.application.referenceId;
+    const outcome = outcomes.get(referenceId);
+    const running = processingIds.has(referenceId);
+    const header = create("div", "detail-header");
+    const headingGroup = create("div");
+    headingGroup.append(
+      create("p", "step", "Submitted application"),
+      create("h2", undefined, referenceId),
+      create("p", "detail-title", submission.title),
+    );
+    header.append(headingGroup);
+    const badges = create("div", "detail-badges");
+    if (completed) {
+      badges.append(create("span", `outcome-badge ${decisionClass(completed.decision)}`, decisionLabel(completed.decision)));
+    }
+    if (outcome && !running) {
+      badges.append(create("span", `outcome-badge ${statusClass(outcome.outcome)}`, outcomeLabel(outcome.outcome)));
+    }
+    if (badges.childElementCount) header.append(badges);
+    detail.append(header);
+    appendApplicationOverview(detail, submission);
+    appendVerification(detail, referenceId, running);
+    if (queued && outcome && !running) appendDecisionActions(detail, referenceId);
+  }
+
+  function recordDecision(referenceId: string, decision: AgentDecision): void {
+    const index = queue.findIndex((item) => item.application.referenceId === referenceId);
+    if (index < 0 || !outcomes.has(referenceId) || processingIds.has(referenceId)) return;
+    const [item] = queue.splice(index, 1);
+    if (!item) return;
+    decided.push({ ...item, decision });
+    selectedReference = queue[index]?.application.referenceId
+      ?? queue[index - 1]?.application.referenceId
+      ?? null;
+    progressWrap.hidden = false;
+    status.textContent = `${decisionLabel(decision)} ${referenceId}.`;
+    render();
   }
 
   function render(): void {
     renderQueue();
+    renderDecisions();
     renderDetail();
     updateActions();
   }
@@ -382,7 +491,10 @@ export function initializeApp(root: Document = document): void {
   }
 
   loadDemo.addEventListener("click", () => {
-    const existing = new Set(queue.map((item) => item.application.referenceId));
+    const existing = new Set([
+      ...queue.map((item) => item.application.referenceId),
+      ...decided.map((item) => item.application.referenceId),
+    ]);
     const added = MOCK_SUBMISSIONS.filter((item) => !existing.has(item.application.referenceId)).map(copySubmission);
     queue.push(...added);
     if (!selectedReference && queue.length) selectedReference = queue[0]!.application.referenceId;
@@ -412,8 +524,8 @@ export function initializeApp(root: Document = document): void {
       setDialogError(addDialogError, "Enter every required application value.");
       return;
     }
-    if (queue.some((item) => item.application.referenceId === referenceId)) {
-      setDialogError(addDialogError, "An application with this reference ID is already in the queue.");
+    if (knownReference(referenceId)) {
+      setDialogError(addDialogError, "An application with this reference ID is already in the queue or decisions summary.");
       return;
     }
     if (!(imageFile instanceof File) || !imageFile.size) {

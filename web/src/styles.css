@@ -92,7 +92,7 @@ main { padding-block: 1.5rem 4rem; }
 
 .error-summary p { margin-bottom: 0; }
 
-.demo-intro, .queue-panel, .application-detail, .progress-wrap {
+.demo-intro, .queue-panel, .application-detail, .progress-wrap, .decision-summary {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 0.75rem;
@@ -119,7 +119,7 @@ main { padding-block: 1.5rem 4rem; }
 }
 .confidence-note { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.85rem; font-weight: 650; }
 
-.primary-action, .secondary-action, .queue-button, .dialog-presets button {
+.primary-action, .secondary-action, .danger-action, .queue-button, .dialog-presets button {
   padding: 0.75rem 1rem;
   border: 2px solid var(--navy);
   border-radius: 0.45rem;
@@ -131,6 +131,8 @@ main { padding-block: 1.5rem 4rem; }
 .primary-action:hover { background: var(--navy-dark); }
 .secondary-action { width: 100%; color: var(--navy); background: white; }
 .secondary-action:hover { background: #eef7ff; }
+.danger-action { width: 100%; color: white; background: var(--danger); border-color: var(--danger); }
+.danger-action:hover { background: #7c1a1a; }
 button:disabled { cursor: not-allowed; opacity: 0.55; }
 
 .empty-copy { margin: 0 0 0.75rem; color: var(--muted); font-weight: 650; }
@@ -183,15 +185,16 @@ progress { width: 100%; height: 1.4rem; }
 .queue-copy strong, .queue-copy span { overflow-wrap: anywhere; }
 .queue-copy span { color: var(--muted); font-size: 0.84rem; font-weight: 650; }
 .queue-state { grid-column: 2; font-size: 0.82rem; font-weight: 850; }
-.queue-state.outcome-match { color: var(--success); }
+.queue-state.outcome-match, .queue-state.outcome-approved { color: var(--success); }
 .queue-state.outcome-review { color: var(--warning); }
-.queue-state.outcome-unable { color: var(--danger); }
+.queue-state.outcome-unable, .queue-state.outcome-denied { color: var(--danger); }
 
 .application-detail { min-width: 0; padding: clamp(1rem, 3vw, 1.75rem); }
 .detail-header, .result-header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.75rem; align-items: start; }
 .detail-header h2, .result-header h2, .result-header h3 { margin: 0; }
 .detail-title { margin: 0.4rem 0 0; color: var(--muted); font-weight: 700; }
 .detail-header .step { color: var(--warning); }
+.detail-badges { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 
 .application-overview { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(220px, 0.8fr); gap: 1rem; margin-top: 1.5rem; }
 .submitted-panel, .label-panel, .verification-result { padding: 1rem; background: #f8fafb; border: 1px solid var(--border); border-radius: 0.5rem; }
@@ -203,9 +206,9 @@ progress { width: 100%; height: 1.4rem; }
 
 .verification-result { margin-top: 1rem; background: white; }
 .outcome-badge { display: inline-block; padding: 0.35rem 0.65rem; border: 2px solid currentColor; border-radius: 999px; font-weight: 900; }
-.outcome-match { color: var(--success); background: #eaf8ef; }
+.outcome-match, .outcome-approved { color: var(--success); background: #eaf8ef; }
 .outcome-review { color: var(--warning); background: #fff5df; }
-.outcome-unable { color: var(--danger); background: #fff0f0; }
+.outcome-unable, .outcome-denied { color: var(--danger); background: #fff0f0; }
 .result-meta { color: var(--muted); }
 .check-list { display: grid; gap: 0.75rem; padding: 0; list-style: none; }
 .check-card { padding: 0.85rem; border: 1px solid var(--border); border-left: 6px solid var(--border); border-radius: 0.4rem; }
@@ -214,6 +217,19 @@ progress { width: 100%; height: 1.4rem; }
 .check-card[data-status="UNCERTAIN"] { border-left-color: var(--warning); }
 .check-card strong { display: block; }
 .low-confidence { display: inline-block; padding: 0.1rem 0.4rem; color: #6d3700; background: #ffe9b9; border-radius: 999px; font-size: 0.78rem; }
+
+.decision-summary { margin-top: 1.25rem; padding: 1rem; }
+.decision-summary h2 { margin-top: 0; }
+.decision-counts { margin: 0 0 0.75rem; font-weight: 750; }
+.decision-actions {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #f8fafb;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+.decision-actions h3 { margin-top: 0; }
+.decision-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem; }
 
 .site-footer { padding: 1.5rem 0; color: white; background: var(--navy-dark); }
 .site-footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.5rem; }
@@ -231,7 +247,7 @@ progress { width: 100%; height: 1.4rem; }
   :root { font-size: 18px; }
   .shell { width: min(100% - 1rem, 1240px); }
   .site-header { padding-block: 1.6rem; }
-  .demo-actions, .application-queue { width: 100%; grid-template-columns: 1fr; }
+  .demo-actions, .application-queue, .decision-buttons { width: 100%; grid-template-columns: 1fr; }
   .application-values, .check-card dl { grid-template-columns: 1fr; }
 }
 

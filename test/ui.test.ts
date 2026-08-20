@@ -104,6 +104,11 @@ describe("browser interface", () => {
     expect(document.querySelector("#application-detail")?.textContent).toContain("No application selected");
     expect(document.querySelector<HTMLButtonElement>("#process-selected")?.disabled).toBe(true);
     expect(document.querySelector<HTMLButtonElement>("#process-batch")?.disabled).toBe(true);
+    expect(document.querySelector("#decision-empty")?.textContent).toContain("No applications have been approved or denied yet");
+    expect(document.querySelector("#decision-counts")?.textContent).toContain("Approved 0 · Denied 0");
+    expect(document.querySelectorAll("#decision-list .queue-button")).toHaveLength(0);
+    expect(document.querySelector("#approve-application")).toBeNull();
+    expect(document.querySelector("#deny-application")).toBeNull();
   });
 
   it("loads bundled samples into the queue without calling the verification API", () => {
@@ -165,6 +170,62 @@ describe("browser interface", () => {
     expect(requestUrl(apiCalls[0]![0])).toContain("/api/v1/verifications");
     expect(requestUrl(apiCalls[0]![0])).not.toContain("/batch");
     expect(document.querySelector("#application-queue")?.textContent).toContain("Match");
+  });
+
+  it("hides approve and deny until automated review finishes", () => {
+    loadSamples();
+    expect(document.querySelector("#approve-application")).toBeNull();
+    expect(document.querySelector("#deny-application")).toBeNull();
+  });
+
+  it("approves a processed application into the decisions summary and advances selection", async () => {
+    loadSamples();
+    stubReviewFetch();
+    document.querySelector<HTMLButtonElement>("#process-selected")!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("#approve-application")).not.toBeNull();
+    });
+    document.querySelector<HTMLButtonElement>("#approve-application")!.click();
+    expect(document.querySelectorAll("#application-queue .queue-button")).toHaveLength(4);
+    expect(document.querySelector("#application-queue")?.textContent).not.toContain("COLA-DEMO-1001");
+    expect(document.querySelector("#decision-list")?.textContent).toContain("COLA-DEMO-1001");
+    expect(document.querySelector("#decision-list")?.textContent).toContain("Approved");
+    expect(document.querySelector("#decision-counts")?.textContent).toContain("Approved 1 · Denied 0");
+    expect(document.querySelector("#demo-status")?.textContent).toContain("Approved COLA-DEMO-1001");
+    expect(document.querySelector("#application-detail")?.textContent).toContain("COLA-DEMO-1002");
+    expect(document.querySelector("#approve-application")).toBeNull();
+  });
+
+  it("denies a processed application into the decisions summary", async () => {
+    loadSamples();
+    stubReviewFetch();
+    document.querySelector<HTMLButtonElement>("#process-selected")!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("#deny-application")).not.toBeNull();
+    });
+    document.querySelector<HTMLButtonElement>("#deny-application")!.click();
+    expect(document.querySelectorAll("#application-queue .queue-button")).toHaveLength(4);
+    expect(document.querySelector("#decision-list")?.textContent).toContain("Denied");
+    expect(document.querySelector("#decision-counts")?.textContent).toContain("Approved 0 · Denied 1");
+    expect(document.querySelector("#demo-status")?.textContent).toContain("Denied COLA-DEMO-1001");
+  });
+
+  it("reopens a decided application from the summary without returning it to the queue", async () => {
+    loadSamples();
+    stubReviewFetch();
+    document.querySelector<HTMLButtonElement>("#process-selected")!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("#approve-application")).not.toBeNull();
+    });
+    document.querySelector<HTMLButtonElement>("#approve-application")!.click();
+    document.querySelector<HTMLButtonElement>("#decision-list .queue-button")!.click();
+    const detail = document.querySelector<HTMLElement>("#application-detail")!;
+    expect(detail.textContent).toContain("COLA-DEMO-1001");
+    expect(detail.textContent).toContain("Approved");
+    expect(document.querySelector("#approve-application")).toBeNull();
+    expect(document.querySelector("#deny-application")).toBeNull();
+    expect(document.querySelectorAll("#application-queue .queue-button")).toHaveLength(4);
+    expect(document.querySelector<HTMLButtonElement>("#process-selected")?.disabled).toBe(true);
   });
 
   it("processes the next three unprocessed applications as a batch", async () => {
