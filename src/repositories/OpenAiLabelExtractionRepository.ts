@@ -38,9 +38,18 @@ any part of the heading or either numbered statement is unreadable.
 
 For warning formatting, inspect the visible label and report whether the heading is uppercase and
 bold, the body is not bold, the statement is separate from other information, and it is presented
-as one continuous paragraph. Normal visual line wrapping within a single paragraph still counts as
-continuous; report false only for distinct blocks, columns, bullets, or interruptions by unrelated
-text. Separation is satisfied when whitespace, a border, or placement clearly sets the complete
+as one continuous paragraph.
+
+continuousParagraph is a layout observation, not a reading of every word. It is true when the
+heading and both numbered statements form one running block of text. Line wrapping, a line break
+before "(2)", and text that fills a box or column while remaining one block are all still true.
+It is false only when the warning is split into distinct paragraphs or blocks, set in columns or
+bullets, or interrupted by unrelated label text. Do not use null because the text wraps. Use null
+only when the warning is cropped or illegible so its layout cannot be seen.
+If you can see that single-block layout, set continuousParagraph to true and give it high confidence (0.9 or above).
+Do not lower confidence to express leftover doubt about wrapping. Wrapping is not ambiguity.
+
+Separation is satisfied when whitespace, a border, or placement clearly sets the complete
 warning apart from unrelated text; a distinct enclosing box counts as separation. Judge boldness
 by visible relative font weight: a clearly heavier heading is bold and a
 regular-weight body is not bold. Use null only when image quality makes the weight indistinguishable.

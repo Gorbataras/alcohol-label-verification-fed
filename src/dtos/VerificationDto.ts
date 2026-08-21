@@ -33,7 +33,7 @@ export const WarningFormatSchema = z.object({
     .boolean()
     .nullable()
     .describe(
-      "True when the warning is one continuous paragraph; normal visual line wrapping does not make it false.",
+      "True when heading and both numbered statements form one running text block. Line wrapping still true. False only for split blocks, columns, bullets, or interruption by unrelated text. Null only if layout cannot be seen.",
   ),
 });
 

@@ -20,7 +20,10 @@ describe("OpenAiLabelExtractionRepository", () => {
     expect(params.input[0].content).toContain("omit only the country clause");
     expect(params.input[0].content).toContain("For countryOfOrigin, return only");
     expect(params.input[0].content).toContain("must include the visible \"GOVERNMENT WARNING:\"");
-    expect(params.input[0].content).toContain("Normal visual line wrapping");
+    expect(params.input[0].content).toContain("heading and both numbered statements form one running block");
+    expect(params.input[0].content).toContain("Do not use null because the text wraps");
+    expect(params.input[0].content).toContain("give it high confidence (0.9 or above)");
+    expect(params.input[0].content).toContain("Wrapping is not ambiguity");
     expect(params.input[0].content).toContain("a distinct enclosing box counts as separation");
     expect(params.input[0].content).toContain("visible relative font weight");
     expect(params.input[0].content).toContain("it is not a compliance score");
