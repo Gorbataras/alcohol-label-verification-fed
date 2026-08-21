@@ -158,6 +158,66 @@ describe("browser interface", () => {
     expect(target.textContent).toContain("Low confidence");
   });
 
+  it("expands checks that need review and collapses matching checks", () => {
+    const target = document.createElement("section");
+    renderOutcome(
+      {
+        outcome: "NEEDS_REVIEW",
+        referenceId: "COLA-DEMO-1002",
+        filename: "brand-mismatch.png",
+        processingMs: 10,
+        fields: [
+          {
+            field: "brandName",
+            status: "MISMATCH",
+            expected: "OLD TOM DISTILLERY",
+            observed: "STONE'S THROW",
+            score: 0.4,
+            confidence: 0.94,
+            detail: "Submitted brand does not match the label.",
+          },
+          {
+            field: "classType",
+            status: "MATCH",
+            expected: "Kentucky Straight Bourbon Whiskey",
+            observed: "Kentucky Straight Bourbon Whiskey",
+            score: 1,
+            confidence: 0.96,
+            detail: "Submitted class or type matches the label.",
+          },
+        ],
+        warningChecks: [
+          {
+            check: "text",
+            status: "MATCH",
+            expected: true,
+            observed: true,
+            confidence: 0.95,
+            detail: "Required warning text is present.",
+          },
+          {
+            check: "headingUppercase",
+            status: "UNCERTAIN",
+            expected: true,
+            observed: true,
+            confidence: 0.72,
+            detail: "Extraction confidence is below 85%; review the label image manually.",
+          },
+        ],
+      },
+      target,
+    );
+    const details = target.querySelector("details.matched-checks");
+    expect(details).not.toBeNull();
+    expect(details?.querySelector("summary")?.textContent).toContain("checks matched");
+    const issueCards = [...target.querySelectorAll<HTMLElement>(":scope > .check-list .check-card")];
+    expect(issueCards.map((card) => card.dataset.status)).toEqual(["MISMATCH", "UNCERTAIN"]);
+    const matchedCards = [...details!.querySelectorAll<HTMLElement>(".check-card")];
+    expect(matchedCards.map((card) => card.dataset.status)).toEqual(["MATCH", "MATCH"]);
+    expect(target.textContent).toContain("Submitted brand does not match the label.");
+    expect(target.textContent).toContain("Kentucky Straight Bourbon Whiskey");
+  });
+
   it("processes the selected application with a single verification request", async () => {
     loadSamples();
     const fetchMock = stubReviewFetch();

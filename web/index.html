@@ -47,20 +47,21 @@
       </div>
 
       <div class="review-workspace">
-        <aside class="queue-panel" aria-label="Submitted application queue">
-          <h2>Submitted applications</h2>
-          <p id="queue-empty" class="empty-copy">The review queue is empty. Load demo samples or add an application.</p>
-          <ol id="application-queue" class="application-queue"></ol>
-        </aside>
+        <div class="review-sidebar">
+          <aside class="queue-panel" aria-label="Submitted application queue">
+            <h2>Submitted applications</h2>
+            <p id="queue-empty" class="empty-copy">The review queue is empty. Load demo samples or add an application.</p>
+            <ol id="application-queue" class="application-queue"></ol>
+          </aside>
+          <section class="decision-summary" aria-labelledby="agent-decisions-heading">
+            <h2 id="agent-decisions-heading">Agent decisions</h2>
+            <p id="decision-counts" class="decision-counts">Approved 0 · Denied 0</p>
+            <p id="decision-empty" class="empty-copy">No applications have been approved or denied yet.</p>
+            <ol id="decision-list" class="application-queue"></ol>
+          </section>
+        </div>
         <article id="application-detail" class="application-detail" tabindex="-1" aria-live="polite"></article>
       </div>
-
-      <section class="decision-summary" aria-labelledby="agent-decisions-heading">
-        <h2 id="agent-decisions-heading">Agent decisions</h2>
-        <p id="decision-counts" class="decision-counts">Approved 0 · Denied 0</p>
-        <p id="decision-empty" class="empty-copy">No applications have been approved or denied yet.</p>
-        <ol id="decision-list" class="application-queue"></ol>
-      </section>
     </main>
 
     <dialog id="batch-dialog" aria-labelledby="batch-dialog-heading">

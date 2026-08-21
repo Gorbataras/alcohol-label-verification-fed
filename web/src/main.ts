@@ -87,6 +87,17 @@ function confidenceBadge(confidence: number): HTMLSpanElement | null {
   return create("span", "low-confidence", "Low confidence");
 }
 
+function needsReviewStatus(status: FieldCheck["status"] | WarningCheck["status"]): boolean {
+  return status === "MISMATCH" || status === "NOT_FOUND" || status === "UNCERTAIN";
+}
+
+function appendCheckGroup(target: ParentNode, heading: string, cards: HTMLLIElement[]): void {
+  if (!cards.length) return;
+  const list = create("ul", "check-list");
+  list.append(...cards);
+  target.append(create("h3", undefined, heading), list);
+}
+
 function fieldCard(field: FieldCheck): HTMLLIElement {
   const item = create("li", "check-card");
   item.dataset.status = field.status;
@@ -152,13 +163,23 @@ export function renderOutcome(
     return;
   }
 
-  target.append(create("h3", undefined, "Submitted value comparisons"));
-  const fields = create("ul", "check-list");
-  outcome.fields.forEach((field) => fields.append(fieldCard(field)));
-  target.append(fields, create("h3", undefined, "Government warning checks"));
-  const warnings = create("ul", "check-list");
-  outcome.warningChecks.forEach((check) => warnings.append(warningCard(check)));
-  target.append(warnings);
+  const fieldIssues = outcome.fields.filter((field) => needsReviewStatus(field.status));
+  const fieldMatches = outcome.fields.filter((field) => !needsReviewStatus(field.status));
+  const warningIssues = outcome.warningChecks.filter((check) => needsReviewStatus(check.status));
+  const warningMatches = outcome.warningChecks.filter((check) => !needsReviewStatus(check.status));
+
+  appendCheckGroup(target, "Submitted value comparisons that need review", fieldIssues.map(fieldCard));
+  appendCheckGroup(target, "Government warning checks that need review", warningIssues.map(warningCard));
+
+  const matchCount = fieldMatches.length + warningMatches.length;
+  if (!matchCount) return;
+
+  const matched = create("details", "matched-checks");
+  const label = matchCount === 1 ? "1 check matched" : `${matchCount} checks matched`;
+  matched.append(create("summary", undefined, label));
+  appendCheckGroup(matched, "Submitted value comparisons", fieldMatches.map(fieldCard));
+  appendCheckGroup(matched, "Government warning checks", warningMatches.map(warningCard));
+  target.append(matched);
 }
 
 function applicationDetails(submission: SubmittedApplication): HTMLDListElement {
@@ -455,8 +476,10 @@ export function initializeApp(root: Document = document): void {
     }
     if (badges.childElementCount) header.append(badges);
     detail.append(header);
-    appendApplicationOverview(detail, submission);
-    appendVerification(detail, referenceId, running);
+    const body = create("div", "detail-body");
+    appendApplicationOverview(body, submission);
+    appendVerification(body, referenceId, running);
+    detail.append(body);
     if (queued && outcome && !running) appendDecisionActions(detail, referenceId);
   }
 
